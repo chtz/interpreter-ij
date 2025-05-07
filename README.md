@@ -262,16 +262,51 @@ let result = reduce(
 puts("Sum of doubled evens: " + result);  // Output: Sum of doubled evens: 60
 ```
 
+### Closures
+
+```ij
+def createCounter() {
+  let count = 0;
+  def counter() {
+    count = count + 1;
+    return count;
+  }
+  return counter;
+}
+
+let counter = createCounter();
+puts(counter()); // Outputs: 1
+puts(counter()); // Outputs: 2
+puts(counter()); // Outputs: 3
+```
+
 ## How to Run IJ Scripts
 
 All the samples require a MacOS (Arm64) environment because the native interpreter is a platform-specific binary. However, you can generate binaries for other platforms and architectures too.
 
-The IJ interpreter accepts the script source code from SYSIN, so you need to utilize the wrapper scripts for multiline input and scripts that perform I/O (reading lines from SYSIN and writing lines to SYSOUT).
+### Running Scripts
 
-### Sample: Run One Liners
+#### One Liners
 
 ```bash
 echo "puts(22/7.0)"|./interpreter_mac_arm64
+```
+
+The IJ interpreter accepts the script source code from SYSIN, so you need to utilize the wrapper scripts for multiline input and scripts that perform I/O (reading lines from SYSIN and writing lines to SYSOUT). If you run a script that does not expect input to read with ```gets()```, you need to make sure the wrapper script doesn't wait for input:
+
+```bash
+echo|./native_interpreter.sh foo_not_expecting_input.s
+```
+
+#### Sample Script
+
+```ij
+puts('What is your name (Ctrl-D to exit)?');
+let name = gets();
+while (name != null) {
+    puts("Hello " + name);
+    name = gets();
+}
 ```
 
 ### Sample: Run Native Interpreter
