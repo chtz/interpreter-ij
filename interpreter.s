@@ -4163,7 +4163,7 @@ puts("return StringValue{val: s}");
 puts("}))");
 puts("ctx.Create(" + chr(34) + "assert" + chr(34) + ", NewFunctionCommand(ctx, func(ctx *Context, params *ArrayValue) Value {");
 puts("if !params.Get(IntValue{val: 0}).IsTruthy() {");
-puts("fmt.Println(" + chr(34) + "=> FAILED " + chr(34) + ", params.Get(IntValue{val: 1}).ValueString())");
+puts("fmt.Println(" + chr(34) + "=> xFAILED " + chr(34) + ", params.Get(IntValue{val: 1}).ValueString())");
 puts("}");
 puts("return NullVal");
 puts("}))");
@@ -4308,7 +4308,8 @@ puts("ctx.Create(" + chr(34) + "assert" + chr(34) + ", NewFunctionCommand(ctx, f
 puts("t := params.Get(IntValue{val: 0})");
 puts("m := params.Get(IntValue{val: 1})");
 puts("if !t.IsTruthy() {");
-puts("fmt.Println(" + chr(34) + "=> FAILED " + chr(34) + ", m.ValueString())");
+//puts("fmt.Println(" + chr(34) + "=> yFAILED " + chr(34) + ", m.ValueString())"); 
+puts("panic(" + chr(34) + "assertion failed: " + chr(34) + " + m.ValueString())"); //FIXME BACKPORT
 puts("return NewInvalidValue(" + chr(34) + "assert: " + chr(34) + " + m.ValueString())");
 puts("}");
 puts("return NewNullValue()");
@@ -6165,7 +6166,7 @@ let source = readSources();
 let parseResult = interpreter["parse"](interpreter, source);
 
 if (!(parseResult["success"])) {
-    puts("Parse failed with errors: " + interpreter["formatErrors"](interpreter, parseResult["errors"]));
+    puts("Parse failed with errors: " + parseResult["errors"]); //FIXME BACKPORT
 } else {
     //puts("Parse succeeded.");
     if (runIt) {

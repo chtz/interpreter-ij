@@ -280,6 +280,14 @@ puts(counter()); // Outputs: 2
 puts(counter()); // Outputs: 3
 ```
 
+### Tests
+
+See also ```tests.s``` for more samples...
+
+```bash
+echo|./native_interpreter.sh test.s
+```
+
 ## How to Run IJ Scripts
 
 All the samples require a MacOS (Arm64) environment because the native interpreter is a platform-specific binary. However, you can generate binaries for other platforms and architectures too.
@@ -344,9 +352,10 @@ Transpile the sample script to Golang sources, build the Golang sources and run 
 
 ### Sample: Re-create the Native Interpreter
 
-Transpile the interpreter itself (```interpreter.s```) to Golang sources, build the Golang sources and replace the native interpreter binary (```interpreter_mac_arm64```) with the generated one. This requires you to have Go installed and the ```go``` executable in your path.
+Transpile the interpreter itself (```interpreter.s```) to Golang sources, build the Golang sources and replace the native interpreter binary (```interpreter_mac_arm64```) with the generated one. This requires you to have Go installed and the ```go``` executable in your path (do it twice).
 
 ```bash
+./compile.sh interpreter.s interpreter_mac_arm64
 ./compile.sh interpreter.s interpreter_mac_arm64
 ```
 
