@@ -6127,7 +6127,7 @@ def readSources() {
         source = newlinehack(line);
     }
     else {
-        source = "puts('Hello World ' + 3 / (1 + 2));";
+        source = "puts('No sources found');";
     }
     if (source == "//multiline") {
         let line = gets();
