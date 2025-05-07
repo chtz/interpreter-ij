@@ -275,9 +275,16 @@ def createCounter() {
 }
 
 let counter = createCounter();
+let counter2 = createCounter();
+
 puts(counter()); // Outputs: 1
+puts(counter2()); // Outputs: 1
+
 puts(counter()); // Outputs: 2
 puts(counter()); // Outputs: 3
+
+puts(counter2()); // Outputs: 2
+puts(counter2()); // Outputs: 3
 ```
 
 ### Tests
