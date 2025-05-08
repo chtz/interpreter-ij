@@ -350,7 +350,7 @@ Run the sample script with the interpreter (```interpreter.s```) which is execut
 
 ### Sample: Transpile IJ Code to Golang
 
-Transpile the sample script to Golang sources, build the Golang sources and run the created binary. This requires you to have Go installed and the ```go``` executable in your path.
+Transpile the sample script to Golang sources, build the Golang sources and run the created binary. This requires you to have Go installed and the ```go``` executable in your path, as well as Docker installed with the ```docker``` executable in your path and the Docker daemon running.
 
 ```bash
 ./compile.sh sample.s sample   
@@ -359,7 +359,9 @@ Transpile the sample script to Golang sources, build the Golang sources and run 
 
 ### Sample: Re-create the Native Interpreter
 
-Transpile the interpreter itself (```interpreter.s```) to Golang sources, build the Golang sources and replace the native interpreter binary (```interpreter_mac_arm64```) with the generated one. This requires you to have Go installed and the ```go``` executable in your path (do it twice).
+Transpile the interpreter itself (```interpreter.s```) to Golang sources, build the Golang sources and replace the native interpreter binary (```interpreter_mac_arm64```) with the generated one. This requires you to have Go installed and the ```go``` executable in your path, as well as Docker installed with the ```docker``` executable in your path and the Docker daemon running (do it twice).
+
+We aim for reproducible builds of the interpreter binary - compiling the source ```interpreter.s``` to the binary ```interpreter_mac_arm64``` should lead to a binary with the same hash, ensuring consistent and verifiable builds.
 
 ```bash
 ./compile.sh interpreter.s interpreter_mac_arm64
