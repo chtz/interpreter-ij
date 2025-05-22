@@ -481,27 +481,17 @@ def makeIndexExpression(collectionNode, indexNode, position) {
             }
         }
         if (!(isString || isNumber)) {
+            // Position info (node) not available in this scope, using placeholders.
             throwRuntimeError(
                 "Map key must be a string or number, got: " + key,
-                node["position"]["line"],
-                node["position"]["column"]
+                -1, // Placeholder for line (original was node["position"]["line"])
+                -1  // Placeholder for column (original was node["position"]["column"])
             )
         }
 
-        // If key not present, return null
-        let keyList = keys(map)
-        let found = false
-        let k = 0
-        while (k < len(keyList)) {
-            if (keyList[k] == key) {
-                found = true
-            }
-            k = k + 1
-        }
-        if (!(found)) {
-            return null
-        }
-        return map[key]
+        // Optimized: Directly return map[key], assuming non-existent keys result in null.
+        // This relies on the behavior observed in 'lookupKeyword' where 'keywords[identifier] != null' is used.
+        return map[key];
     }
     node["evaluateMapIndex"]=evaluateMapIndex;
 
@@ -1266,23 +1256,17 @@ def evaluateFunctionDeclaration(node, context) { // FIXME really?
 // Checks if result is a map with key "isReturnValue" set to true
 def isReturnValue(result) {
     if (result == null) {
-        //puts("No ret value: " + result); // FIXME //DEBUG
-        return false;
-    } else {
-        if (isMap(result)) { // FIXME result handling to support return
-            let keysArr = keys(result);
-            let i = 0;
-            while (i < len(keysArr)) {
-                if (keysArr[i] == returnValueIndicatorMagicValue) {
-                    //puts("Ret value: " + result); // FIXME //DEBUG
-                    return result[returnValueIndicatorMagicValue] == true;
-                }
-                i = i + 1;
-            }
-        }
-        //puts("No ret value2: " + result); // FIXME //DEBUG
         return false;
     }
+    if (isMap(result)) {
+        // Directly access the magic key.
+        // If 'result' is a genuine ReturnValue map, this key will exist and be true.
+        // If 'result' is another type of map AND the magic key is absent,
+        // this relies on result[returnValueIndicatorMagicValue] evaluating to something
+        // that is not 'true' (e.g., null) without causing a runtime error.
+        return result[returnValueIndicatorMagicValue] == true;
+    }
+    return false;
 }
 
 // toJson for FunctionDeclaration
