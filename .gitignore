@@ -1,3 +1,5 @@
 update.sh
 sample
 compile-linux.sh
+interpreter_base.s
+mcp_eval.s
