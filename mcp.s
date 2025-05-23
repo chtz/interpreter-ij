@@ -387,14 +387,7 @@ def jsonToString(value) {
         if (isNumber(value)) {
             return "" + value;
         } else {
-            if (isBoolean(value)) {
-                if (value) {
-                    return "true";
-                } else {
-                    return "false";
-                }
-            } else {
-                if (isNull(value)) {
+                if (value == null) {
                     return "null";
                 } else {
                     if (isArray(value)) {
@@ -403,11 +396,17 @@ def jsonToString(value) {
                         if (isMap(value)) {
                             return mapToJsonString(value);
                         } else {
-                            return "null";
+                            if (isBoolean(value)) {
+                                if (value) {
+                                    return "true";
+                                } else {
+                                    return "false";
+                                }
+                            }
                         }
                     }
                 }
-            }
+            
         }
     }
 }
@@ -424,18 +423,18 @@ def debugPrint(p) {
 // Command loop
 
 def result(r) {
-    return {
+    return jsonToString({
         "jsonrpc": "2.0",
             "id": 3,
             "result": r
-        }
+        })
 }
 
 let line = gets();
 while (line != null) {
     let p = parseJson(line);
     
-    debugPrint(p);
+    //debugPrint(p);
     puts(jsonToString(p));
 
     let method = p["method"]
