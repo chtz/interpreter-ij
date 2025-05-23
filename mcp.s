@@ -1,3 +1,5 @@
+def mcp() {
+
 // Helper function to skip whitespace characters
 def skipWhitespace(s, index) {
     while (index < len(s)) {
@@ -70,7 +72,7 @@ def parseNumber(s, index) {
     // Parse digits
     while (index < len(s)) {
         let ch = char(s, index);
-        if (ch >= chr(48) && ch <= chr(57)) {
+        if (ord(ch) >= 48 && ord(ch) <= 57) {
             index = index + 1;
         } else {
             if (ch == chr(46) && !hasDecimal) {
@@ -264,7 +266,7 @@ def parseValue(s, index) {
             if (ch == chr(91)) {
                 return parseArray(s, index);
             } else {
-                if ((ch >= chr(48) && ch <= chr(57)) || ch == chr(45)) {
+                if ((ord(ch) >= 48 && ord(ch) <= 57) || ord(ch) == 45) {
                     return parseNumber(s, index);
                 } else {
                     if (ch == chr(116)) {
@@ -413,10 +415,15 @@ def jsonToString(value) {
 
 // Command loop
 
-def result(r) {
+/* def eval(s) {
+    puts(s);
+    return "FIXME " + s;
+} */
+
+def result(id,r) {
     return jsonToString({
         "jsonrpc": "2.0",
-            "id": 3,
+            "id": id,
             "result": r
         })
 }
@@ -425,11 +432,65 @@ let line = gets();
 while (line != null) {
     let p = parseJson(line);
     
-    //DEBUG puts(jsonToString(p));
+    //puts(jsonToString(p));
+    //puts(p);
 
     let method = p["method"]
 
-    if ("feature_discovery" == method) {
+    if ("initialize" == method) {
+        puts(result(p["id"],{
+          "protocolVersion": "2024-11-05",
+          "capabilities": {
+            "tools": {
+              "listChanged": true
+            },
+            "resources": {
+              "subscribe": false,
+              "listChanged": false
+            },
+            "prompts": {
+              "listChanged": false
+            }
+          },
+          "serverInfo": {
+            "name": "minimal-mcp-server",
+            "version": "1.0.0"
+          }
+        }));
+    }
+
+    if ("tools/list" == method) {
+        puts(result(p["id"],{
+          "tools": [
+            {
+              "name": "execute_script",
+              "description": "Executes a script in the IJ language.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "script": {
+                    "type": "string",
+                    "description": "The IJ script to execute."
+                  }
+                }
+              }
+            }
+          ]
+        }));
+    }
+
+    if ("tools/call" == method) {
+        puts(result(p["id"],{
+          "content": [
+            {
+              "type": "text",
+              "text": eval(p["params"]["arguments"]["script"])
+            }
+          ]
+        }));
+    }
+
+    /* if ("feature_discovery" == method) {
         puts(result({
             "methods": {
             "execute_script": {
@@ -456,7 +517,7 @@ while (line != null) {
     if ("execute_script" == method) {
         let script = p["params"]["script"];
         puts(result({
-            "output": "executed " + script,
+            "output": eval(script),
             "status": "success"
         }));
     }
@@ -466,7 +527,10 @@ while (line != null) {
             "version": "1.0.0",
             "language": "IJ"
         }));
-    }
+    } */
 
     line = gets();
 }
+
+}
+mcp();
