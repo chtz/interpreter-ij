@@ -411,15 +411,6 @@ def jsonToString(value) {
     }
 }
 
-def debugPrint(p) {
-    let k = keys(p);
-    let i = 0;
-    while (i < len(k)) {
-        puts(k[i] + " -> " +p[k[i]]);
-        i = i + 1;
-    }
-}
-
 // Command loop
 
 def result(r) {
@@ -434,8 +425,7 @@ let line = gets();
 while (line != null) {
     let p = parseJson(line);
     
-    //debugPrint(p);
-    puts(jsonToString(p));
+    //DEBUG puts(jsonToString(p));
 
     let method = p["method"]
 
