@@ -327,9 +327,60 @@ def debugPrint(p) {
 
 // Command loop
 
+def result(r) {
+    return {
+        "jsonrpc": "2.0",
+            "id": 3,
+            "result": r
+        }
+}
+
 let line = gets();
 while (line != null) {
     let p = parseJson(line);
+    
     debugPrint(p);
+
+    let method = p["method"]
+
+    if ("feature_discovery" == method) {
+        puts(result({
+            "methods": {
+            "execute_script": {
+                "description": "Executes a script in the IJ language.",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "script": {
+                    "type": "string",
+                    "description": "The IJ script to execute."
+                    }
+                },
+                "required": ["script"]
+                }
+            },
+            "get_version": {
+                "description": "Returns the version of the MCP server.",
+                "parameters": {}
+            }
+            }
+        }));
+    }
+
+    if ("execute_script" == method) {
+        let script = p["params"]["script"];
+        puts(result({
+            "output": "executed " + script,
+            "status": "success"
+        }));
+    }
+
+    if ("get_version" == method) {
+        puts(result({
+            "version": "1.0.0",
+            "language": "IJ"
+        }));
+    }
+
     line = gets();
 }
