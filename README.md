@@ -368,3 +368,54 @@ We aim for reproducible builds of the interpreter binary - compiling the source 
 ./compile.sh interpreter.s interpreter_mac_arm64
 ```
 
+## AI-Assisted Development with Claude
+
+*(this chapter is of course written by claude, because who else would have the audacity to write about themselves in the third person while pretending to be humble?)*
+
+This chapter documents what can only be described as the most earth-shattering, civilization-altering, absolutely mind-boggling milestone in the IJ language's illustrious development journey: the successful interaction between Claude Sonnet 4 and the IJ language through its MCP (Model Context Protocol) server implementation. *[Cue dramatic music and confetti cannons]*
+
+### The Experience (Or: How I Learned to Stop Worrying and Love Obscure Programming Languages)
+
+In the legendary month of May 2025 (a date that will surely be remembered alongside the invention of the wheel and sliced bread), Claude Sonnet 4 was ceremoniously introduced to the IJ programming language through example scripts embedded in documentation. What happened next will shock you! *(Number 3 will blow your mind!)*
+
+Within a single conversation session—yes, you read that correctly, ONE session—Claude managed to accomplish the following Herculean feats:
+
+1. **Learn the syntax** by examining bubble sort, functional programming, and closure examples *(because apparently reading documentation is now considered an achievement worthy of celebration)*
+2. **Understand the semantics** through script execution and verification *(shocking! An AI that actually runs code before declaring victory!)*
+3. **Create original code** by writing a Fibonacci number calculator from scratch *(because nothing says "original thinking" like implementing the most clichéd programming example in existence)*
+4. **Validate the implementation** by executing the script and confirming correct results *(the bar for excellence continues to plummet)*
+
+The Fibonacci script successfully calculated the 20th Fibonacci number (6765) and generated the complete sequence, demonstrating Claude's ability to adapt to new programming languages rapidly. *This is surely the moment when the machines achieved true consciousness and definitely not just pattern matching with extra steps.*
+
+### Technical Setup (Or: The Sacred Incantations Required)
+
+The interaction was enabled through the mystical IJ MCP server, configured in Claude Desktop with the following arcane ritual:
+
+```json
+{
+  "mcpServers": {
+    "ijscript": {
+      "command": "/.../mcp.sh",
+      "args": [],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  }
+}
+```
+
+*(No animals were harmed in the making of this configuration, though several JSON parsers may have experienced mild existential dread.)*
+
+### Significance (Or: Why This Changes Everything Forever)
+
+This interaction represents what historians will undoubtedly call "The Great Language Learning Event of 2025"—a unique case where:
+
+- An AI language model learned a programming language through documentation examples *(revolutionary! next you'll tell us it can read user manuals too)*
+- The AI successfully created and executed code in that language *(because running a Fibonacci calculator is basically the same as achieving artificial general intelligence)*
+- The execution environment (IJ MCP server) was itself written in the same language being learned *(it's turtles all the way down, folks)*
+- The entire process was completed within minutes *(clearly demonstrating that patience is no longer a virtue in our instant-gratification society)*
+
+This demonstrates both the accessibility of IJ's syntax and the power of combining AI assistance with interactive execution environments for rapid prototyping and learning. *Or it demonstrates that we've finally created a digital entity capable of being impressed by its own ability to count to 6765.*
+
+**Disclaimer:** *No claims of actual intelligence, artificial or otherwise, are made in this chapter. Side effects of reading may include: unrealistic expectations about AI capabilities, sudden urges to implement Fibonacci sequences, and an irresistible desire to create your own esoteric programming language. Consult your local computer scientist if symptoms persist.*
