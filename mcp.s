@@ -30,7 +30,7 @@ def parseString(s, index) {
             index = index + 1; // Skip closing quote
             return {"value": result, "index": index};
         } else {
-            if (ch == '\') {
+            if (ch == chr(92)) {
                 // Handle escape sequences (simplified)
                 index = index + 1;
                 if (index < len(s)) {
@@ -437,7 +437,7 @@ while (line != null) {
 
     let method = p["method"]
 
-    if ("initialize" == method) {
+    if (method == "initialize") {
         puts(result(p["id"],{
           "protocolVersion": "2024-11-05",
           "capabilities": {
@@ -459,7 +459,7 @@ while (line != null) {
         }));
     }
 
-    if ("tools/list" == method) {
+    if (method == "tools/list") {
         puts(result(p["id"],{
           "tools": [
             {
@@ -479,7 +479,7 @@ while (line != null) {
         }));
     }
 
-    if ("tools/call" == method) {
+    if (method == "tools/call") {
         puts(result(p["id"],{
           "content": [
             {
@@ -489,45 +489,6 @@ while (line != null) {
           ]
         }));
     }
-
-    /* if ("feature_discovery" == method) {
-        puts(result({
-            "methods": {
-            "execute_script": {
-                "description": "Executes a script in the IJ language.",
-                "parameters": {
-                "type": "object",
-                "properties": {
-                    "script": {
-                    "type": "string",
-                    "description": "The IJ script to execute."
-                    }
-                },
-                "required": ["script"]
-                }
-            },
-            "get_version": {
-                "description": "Returns the version of the MCP server.",
-                "parameters": {}
-            }
-            }
-        }));
-    }
-
-    if ("execute_script" == method) {
-        let script = p["params"]["script"];
-        puts(result({
-            "output": eval(script),
-            "status": "success"
-        }));
-    }
-
-    if ("get_version" == method) {
-        puts(result({
-            "version": "1.0.0",
-            "language": "IJ"
-        }));
-    } */
 
     line = gets();
 }

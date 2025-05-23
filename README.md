@@ -419,3 +419,14 @@ This interaction represents what historians will undoubtedly call "The Great Lan
 This demonstrates both the accessibility of IJ's syntax and the power of combining AI assistance with interactive execution environments for rapid prototyping and learning. *Or it demonstrates that we've finally created a digital entity capable of being impressed by its own ability to count to 6765.*
 
 **Disclaimer:** *No claims of actual intelligence, artificial or otherwise, are made in this chapter. Side effects of reading may include: unrealistic expectations about AI capabilities, sudden urges to implement Fibonacci sequences, and an irresistible desire to create your own esoteric programming language. Consult your local computer scientist if symptoms persist.*
+
+### Build and test native MCP server
+
+```
+echo '{"id":10,"method":"tools/call","params":{"arguments":{"script":"puts(1+3);"}}}'|./mcp.sh|jq
+
+./compile.sh mcp_eval.s mcp_mac_arm64
+./compile-linux.sh mcp_eval.s mcp_linux_amd64
+
+echo '{"id":10,"method":"tools/call","params":{"arguments":{"script":"puts(1+3);"}}}'|./mcp_mac_arm64|jq
+```
