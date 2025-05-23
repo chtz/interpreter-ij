@@ -13,7 +13,7 @@ def skipWhitespace(s, index) {
 
 // Helper function to parse a JSON string
 def parseString(s, index) {
-    if (index >= len(s) || char(s, index) != chr(34)) {
+    if (index >= len(s) || char(s, index) != '"') {
         return {"error": "Expected quote at start of string", "index": index};
     }
     
@@ -23,13 +23,12 @@ def parseString(s, index) {
     
     while (index < len(s)) {
         let ch = char(s, index);
-        if (ch == chr(34)) {
+        if (ch == '"') {
             // End of string
-            result = substr(s, start, index - start);
             index = index + 1; // Skip closing quote
             return {"value": result, "index": index};
         } else {
-            if (ch == chr(92)) {
+            if (ch == '\') {
                 // Handle escape sequences (simplified)
                 index = index + 1;
                 if (index < len(s)) {
@@ -43,15 +42,7 @@ def parseString(s, index) {
                             if (escaped == "r") {
                                 result = result + chr(13);
                             } else {
-                                if (escaped == "\\") {
-                                    result = result + chr(92);
-                                } else {
-                                    if (escaped == "\"") {
-                                        result = result + chr(34);
-                                    } else {
-                                        result = result + escaped;
-                                    }
-                                }
+                                result = result + escaped;
                             }
                         }
                     }
