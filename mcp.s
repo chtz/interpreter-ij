@@ -34,19 +34,19 @@ def parseString(s, index) {
                 index = index + 1;
                 if (index < len(s)) {
                     let escaped = char(s, index);
-                    if (escaped == chr(110)) {
+                    if (escaped == "n") {
                         result = result + chr(10);
                     } else {
-                        if (escaped == chr(116)) {
+                        if (escaped == "t") {
                             result = result + chr(9);
                         } else {
-                            if (escaped == chr(114)) {
+                            if (escaped == "r") {
                                 result = result + chr(13);
                             } else {
-                                if (escaped == chr(92)) {
+                                if (escaped == "\\") {
                                     result = result + chr(92);
                                 } else {
-                                    if (escaped == chr(34)) {
+                                    if (escaped == "\"") {
                                         result = result + chr(34);
                                     } else {
                                         result = result + escaped;
