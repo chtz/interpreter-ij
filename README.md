@@ -22,6 +22,9 @@
 > 5. Created a Golang runtime so that transpilation from IJ to Golang could happen in one pass
 > 6. Used the Java-based interpreter as the runtime for the first transpilation of the IJ interpreter to Golang with capabilities implemented in the IJ interpreter itself
 > 7. Finally got a native interpreter that could bootstrap itself, making the Java version obsolete
+> 8. Cursor and Claude came up with an MCP server implementation, enabling LLMs to evaluate IJ scripts via a protocol.
+> 9. Leveraged jules.google.com to automatically fix performance issues in the interpreter and runtime.
+> 10. Used claude-4-opus-thinking to waste $50 on attempts to improve performance (with mixed results).
 >
 > It's like a game of telephone, but with programming languages. Each port probably introduced new bugs and quirks, but hey, that's part of the fun! 🎲
 
@@ -72,6 +75,9 @@ echo "puts(22/7.0)" | ./native_interpreter.sh
   - [Run the Self-Hosted Interpreter](#run-the-self-hosted-interpreter)
   - [Transpile IJ Code to Golang](#transpile-ij-code-to-golang)
   - [Re-create the Native Interpreter](#re-create-the-native-interpreter)
+- [Shell Scripts Overview](#shell-scripts-overview)
+- [Compilation](#compilation)
+- [MCP Server (Model Control Protocol)](#mcp-server-model-control-protocol)
 - [AI-Assisted Development with Claude](#ai-assisted-development-with-claude)
   - [The Experience](#the-experience-or-how-i-learned-to-stop-worrying-and-love-obscure-programming-languages)
   - [Technical Setup](#technical-setup-or-the-sacred-incantations-required)
@@ -399,7 +405,31 @@ Run the sample script with the interpreter (`interpreter.s`) which is executed b
 ./selfhosted_interpreter.sh sample.s
 ```
 
+## Shell Scripts Overview
+
+| Script                    | Description                                                                                   |
+|--------------------------|-----------------------------------------------------------------------------------------------|
+| `build.sh`               | Re-creates all binaries (interpreter and MCP server) for all supported platforms. Requires Go and Docker. Also runs tests. |
+| `compile.sh`             | Transpiles IJ to Go and builds a native binary for your current platform.                      |
+| `compile-mac.sh`         | Cross-compiles a reproducible binary for macOS/arm64 using Docker.                             |
+| `compile-linux.sh`       | Cross-compiles a reproducible binary for Linux/amd64 using Docker.                             |
+| `native_interpreter.sh`  | Runs the correct native interpreter for your platform.                                         |
+| `interpreter.sh`         | Runs the interpreter implemented in IJ, using the native interpreter.                         |
+| `selfhosted_interpreter.sh` | Bootstraps the interpreter by running the interpreter in itself.                              |
+| `test.sh`                | Runs the test suite.                                                                           |
+| `mcp.sh`                 | Builds and runs the MCP server in interpreted mode.                                            |
+| `native_mcp.sh`          | Runs the native MCP server for your platform.                                                  |
+| `until.rb`               | Helper for waiting for a string in output (used in build scripts).                             |
+
 ## Compilation
+
+### Compiling Everything (Recommended)
+
+To re-create all binaries (interpreter and MCP server) for all supported platforms, use `build.sh`. This script requires both Go and Docker to be installed and running. It will build all native binaries, run tests, and build the MCP server binaries for both macOS/arm64 and Linux/amd64.
+
+```bash
+./build.sh
+```
 
 ### Compiling for Your Current Platform
 
@@ -433,4 +463,40 @@ We aim for reproducible builds: compiling `interpreter.s` to `interpreter_mac_ar
 ```bash
 ./compile-mac.sh interpreter.s interpreter_mac_arm64
 ./compile-linux.sh interpreter.s interpreter_linux_amd64
+```
+
+## MCP Server (Model Control Protocol)
+
+The MCP server allows LLMs (such as Claude Desktop) to evaluate IJ scripts via a simple JSON-RPC protocol. This is useful for integrating the IJ interpreter as a tool in AI environments.
+
+There are two ways to run the MCP server:
+
+- **Interpreted mode:**
+  ```bash
+  ./mcp.sh
+  ```
+  This builds and runs the MCP server using the interpreter.
+
+- **Native mode:**
+  ```bash
+  ./native_mcp.sh
+  ```
+  This runs the native MCP server binary for your platform (`mcp_mac_arm64` or `mcp_linux_amd64`).
+
+### Claude Desktop Config Example
+
+To use the MCP server with Claude Desktop, add the following to your config:
+
+```json
+{
+  "mcpServers": {
+    "ijscript": {
+      "command": "/.../interpreter-ij/mcp_mac_arm64",
+      "args": [],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  }
+}
 ```
