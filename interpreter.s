@@ -642,17 +642,20 @@ def ReturnStatement_toGo(self) {
     
     def evaluate(self,context) {
       let result = null;
+      // Cache references to avoid repeated lookups
+      let condition = node["condition"];
+      let conditionEval = condition["evaluate"];
+      let body = node["body"];
+      let bodyEval = body["evaluate"];
+      
       // Loop
-      while (EvaluatorIsTruthy(node["condition"]["evaluate"](node["condition"],context))) {
-        // Track each iteration
+      while (EvaluatorIsTruthy(conditionEval(condition, context))) {
+        // Track each iteration - disabled for performance
         //context["trackLoopIteration"](node["position"]); // FIXME implemented later
-        result = node["body"]["evaluate"](node["body"],context);
+        result = bodyEval(body, context);
         // If result is a ReturnValue, stop loop and propagate
         if (isReturnValue(result)) {
-          //return result["value"];
           return result;
-        } else {
-          // do nothing
         }
       }
       return result;
@@ -766,15 +769,13 @@ def assignmentStatementToGo(self) {
 
 // assignmentStatementEvaluate function: calls value's evaluate and assigns to context
 def assignmentStatementEvaluate(self, context) {
+    // Evaluate the value expression and assign in one step
+    let value = self["value"];
     let valueResult = null;
-    if (self["value"] != null) {
-        // Assumes value has "evaluate" function with similar signature
-        valueResult = self["value"]["evaluate"](self["value"], context);
-    } else {
-        valueResult = null;
+    if (value != null) {
+        valueResult = value["evaluate"](value, context);
     }
-    // Assumes context has "assign" function as a map field
-    // Assignment result is returned
+    // Direct assignment
     return context["assign"](context, self["name"], valueResult, self["position"]);
 }
 
@@ -849,23 +850,15 @@ def makeInfixExpression(left, operator, right, position) {
 
 // Evaluate the infix expression: wraps tracking, evaluation, and operator application
 def evaluateInfixExpression(self, context) {
-    // Track evaluation step
-    //trackEvaluationStep(context); // FIXME implemented later
-    let leftValue = null;
-    let rightValue = null;
-    let result = null;
-    if (self["left"] != null) {
-        leftValue = self["left"]["evaluate"](self["left"], context);
-    } else {
-        leftValue = null;
-    }
-    if (self["right"] != null) {
-        rightValue = self["right"]["evaluate"](self["right"], context);
-    } else {
-        rightValue = null;
-    }
-    result = applyInfixOperator(leftValue, self["operator"], rightValue, context["getResourceQuota"](context));
-    return result;
+    // Evaluate left and right operands
+    let left = self["left"];
+    let leftValue = left["evaluate"](left, context);
+    
+    let right = self["right"];
+    let rightValue = right["evaluate"](right, context);
+    
+    // Apply operator and return
+    return applyInfixOperator(leftValue, self["operator"], rightValue, context["getResourceQuota"](context));
 }
 
 // Export to JSON string (no newlines or escapes in string literals)
@@ -1114,16 +1107,9 @@ def blockStatementEvaluate(self, context) {
     while (idx < stmtsLen) {
         let statement = stmts[idx];
         result = statement["evaluate"](statement, blockContext);
-        if (result != null) {
-            // Early return for ReturnValue
-            if (isReturnValue(result)) {
-                //puts("xx ret"); //DEBUG
-                //return result["value"];
-                return result;
-            }
-            else {
-                //puts("xx no ret"); //DEBUG
-            }
+        // Simplified return value check - removed redundant null check
+        if (isReturnValue(result)) {
+            return result;
         }
         idx = idx + 1;
     }
@@ -1514,13 +1500,8 @@ def makeIdentifier(name, position) {
 
 // Evaluator function for Identifier nodes
 def identifierEvaluate(self, context) {
-    // Try reading from context; simulate try/catch by explicit check
-    let name = self["name"];
-    let position = self["position"];
-    // (Assume context["get"](varName, position) returns null or throws a map error object on failure)
-    let value = context["get"](context, name, position);
-    // It is up to context["get"] to throw an error map if variable is undefined
-    return value;
+    // Direct variable lookup - position is stored in self if needed for error
+    return context["get"](context, self["name"], self["position"]);
 }
 
 // toJson function for Identifier nodes
@@ -2494,19 +2475,17 @@ def CallExpression_evaluate(self, context) {
 
         // Only continue if no error so far
         if (!errorCaught) {
-            //puts("DEBUG: Preparing arguments...");
-            // Evaluate arguments
+            // Evaluate arguments - optimized
+            let argumentNodes = self["arguments"];
+            let argLen = len(argumentNodes);
             let args = [];
             let idx = 0;
-            let argLen = len(self["arguments"]);
             while (idx < argLen) {
-                let argNode = self["arguments"][idx];
+                let argNode = argumentNodes[idx];
                 let argValue = argNode["evaluate"](argNode, context);
                 push(args, argValue);
                 idx = idx + 1;
             }
-            //puts("DEBUG: arguments=" + args);
-            //puts("DEBUGHARDCODE: result=" + functionValue(args)); // FIXME FIXME
             result = functionValue(args);
 
             /* FIXME review required ;-)
@@ -3462,17 +3441,14 @@ def makeEvaluationContext() {
     ctx["resourceUsage"] = makeResourceUsage();
 
     // Attach methods explicitly
-
     ctx["define"] = ctxDefine;
     ctx["get"] = ctxGet;
     ctx["assign"] = ctxAssign;
     ctx["registerFunction"] = ctxRegisterFunction;
     ctx["extend"] = ctxExtend;
-
     ctx["getResourceQuota"] = ctxGetResourceQuota;
     ctx["getResourceUsage"] = ctxGetResourceUsage;
     ctx["getEvaluationDepth"] = ctxGetEvaluationDepth;
-
     ctx["trackLoopIteration"] = ctxTrackLoopIteration;
     ctx["trackEvaluationStep"] = ctxTrackEvaluationStep;
     ctx["trackEvaluationDepth"] = ctxTrackEvaluationDepth;
@@ -3610,11 +3586,9 @@ def ctxExtend(ctx) {
     child["assign"] = ctxAssign;
     child["registerFunction"] = ctxRegisterFunction;
     child["extend"] = ctxExtend;
-
     child["getResourceQuota"] = ctxGetResourceQuota;
     child["getResourceUsage"] = ctxGetResourceUsage;
     child["getEvaluationDepth"] = ctxGetEvaluationDepth;
-
     child["trackLoopIteration"] = ctxTrackLoopIteration;
     child["trackEvaluationStep"] = ctxTrackEvaluationStep;
     child["trackEvaluationDepth"] = ctxTrackEvaluationDepth;
