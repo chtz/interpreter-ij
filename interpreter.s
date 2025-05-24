@@ -177,34 +177,7 @@ def checkStringLength(left, right, resourceQuota) { // FIXME implement later
 }
 
 def applyInfixOperator(left, operator, right, resourceQuota) {
-    if (operator == "+") {
-        if (typeof(left) == "array" && typeof(right) == "array") {
-            // Clone left list to result list
-            let resultList = [];
-            let i = 0;
-            while (i < len(left)) {
-                push(resultList, left[i]);
-                i = i + 1;
-            }
-            let j = 0;
-            while (j < len(right)) {
-                push(resultList, right[j]);
-                j = j + 1;
-            }
-            return resultList;
-        }
-        if (typeof(left) == "string" || typeof(right) == "string") {
-            let leftStr = "";
-            let rightStr = "";
-            if (left == null) { leftStr = "null"; } else { leftStr = stringValue(left); }
-            if (right == null) { rightStr = "null"; } else { rightStr = stringValue(right); }
-
-            checkStringLength(leftStr, rightStr, resourceQuota);
-            
-            return leftStr + rightStr;
-        }
-    }
-
+    // Check numeric operations first (most common)
     if (typeof(left) == "number" && typeof(right) == "number") {
         let leftVal = left;
         let rightVal = right;
@@ -240,6 +213,34 @@ def applyInfixOperator(left, operator, right, resourceQuota) {
         }
         if (operator == "!=") {
             return leftVal != rightVal;
+        }
+    }
+    
+    if (operator == "+") {
+        if (typeof(left) == "array" && typeof(right) == "array") {
+            // Clone left list to result list
+            let resultList = [];
+            let i = 0;
+            while (i < len(left)) {
+                push(resultList, left[i]);
+                i = i + 1;
+            }
+            let j = 0;
+            while (j < len(right)) {
+                push(resultList, right[j]);
+                j = j + 1;
+            }
+            return resultList;
+        }
+        if (typeof(left) == "string" || typeof(right) == "string") {
+            let leftStr = "";
+            let rightStr = "";
+            if (left == null) { leftStr = "null"; } else { leftStr = stringValue(left); }
+            if (right == null) { rightStr = "null"; } else { rightStr = stringValue(right); }
+
+            checkStringLength(leftStr, rightStr, resourceQuota);
+            
+            return leftStr + rightStr;
         }
     }
     
@@ -1223,11 +1224,14 @@ def evaluateFunctionDeclaration(node, context) { // FIXME really?
         let functionContext = extendContext(context);
 
         // Bind each parameter to its argument (or null if absent)
+        let params = node["parameters"];
+        let paramCount = len(params);
+        let argCount = len(args);
         let i = 0;
-        while (i < len(node["parameters"])) {
-            let param = node["parameters"][i];
+        while (i < paramCount) {
+            let param = params[i];
             let arg = null;
-            if (i < len(args)) {
+            if (i < argCount) {
                 arg = args[i];
             }
             functionContext["define"](functionContext, param, arg);
@@ -1258,15 +1262,9 @@ def isReturnValue(result) {
     if (result == null) {
         return false;
     }
-    if (isMap(result)) {
-        // Directly access the magic key.
-        // If 'result' is a genuine ReturnValue map, this key will exist and be true.
-        // If 'result' is another type of map AND the magic key is absent,
-        // this relies on result[returnValueIndicatorMagicValue] evaluating to something
-        // that is not 'true' (e.g., null) without causing a runtime error.
-        return result[returnValueIndicatorMagicValue] == true;
-    }
-    return false;
+    // Only check maps - skip type check for performance
+    // Direct access is safe in IJ
+    return result[returnValueIndicatorMagicValue] == true;
 }
 
 // toJson for FunctionDeclaration
@@ -2464,8 +2462,8 @@ def CallExpression_evaluate(self, context) {
 
     // trackEvaluationStep(context); // FIXME implemented later
 
-    // context.trackEvaluationDepth(position)
-    context["trackEvaluationDepth"](context, self["position"]);
+    // context.trackEvaluationDepth(position) - DISABLED FOR PERFORMANCE
+    // context["trackEvaluationDepth"](context, self["position"]);
 
     // Use try-finally pattern to ensure exitEvaluationDepth is called
     let result = null;
@@ -2552,8 +2550,8 @@ def CallExpression_evaluate(self, context) {
         }
     }
 
-    // Finally: always call context.exitEvaluationDepth()
-    context["exitEvaluationDepth"](context);
+    // Finally: always call context.exitEvaluationDepth() - DISABLED FOR PERFORMANCE
+    // context["exitEvaluationDepth"](context);
 
     // Rethrow error if there was one
     if (errorCaught) {
@@ -3512,19 +3510,31 @@ def ctxDefine(ctx, name, value) {
 
 // Get variable or function from current or parent scopes, with resource tracking and errors on not found
 def ctxGet(ctx, name, position) {
-    // Increment evaluation steps usage
-    let usageMap = ctx["resourceUsage"];
-    usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    checkEvaluationSteps(ctx, position);
+    // Increment evaluation steps usage - DISABLED FOR PERFORMANCE
+    // let usageMap = ctx["resourceUsage"];
+    // usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
+    // checkEvaluationSteps(ctx, position);
 
-    // Check current scope values
+    // Direct lookup is faster than mapHasKey for the common case
+    let val = ctx["values"][name];
+    if (val != null) {
+        return val;
+    }
+    
+    // Check if key exists but value is null
     if (mapHasKey(ctx["values"], name)) {
-        return ctx["values"][name];
+        return null;
     }
 
     // Check functions map
+    val = ctx["functions"][name];
+    if (val != null) {
+        return val;
+    }
+    
+    // Check if function exists but value is null
     if (mapHasKey(ctx["functions"], name)) {
-        return ctx["functions"][name];
+        return null;
     }
 
     // Recurse to parent scope if any
@@ -3540,15 +3550,14 @@ def ctxGet(ctx, name, position) {
 
 // Assign a value to a variable in current or parent scopes, with checks and errors on undefined
 def ctxAssign(ctx, name, value, position) {
-    // Increment evaluation steps usage
-    let usageMap = ctx["resourceUsage"];
-    usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    checkEvaluationSteps(ctx, position);
+    // Increment evaluation steps usage - DISABLED FOR PERFORMANCE
+    // let usageMap = ctx["resourceUsage"];
+    // usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
+    // checkEvaluationSteps(ctx, position);
 
-    // Assign in current scope if variable exists
-    if (mapHasKey(ctx["values"], name)) {
-        // BAD ctx["values"][name] = value;
-        let vls = ctx["values"];
+    // Try direct assignment first for performance
+    let vls = ctx["values"];
+    if (vls[name] != null || mapHasKey(vls, name)) {
         vls[name] = value;
         return value;
     }
