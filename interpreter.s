@@ -3416,6 +3416,7 @@ def checkEvaluationSteps(ctx, position) {
 
 // Helper function to check if map has key (no 'in' operator, no direct containsKey)
 def mapHasKey(mapObj, key) {
+    // Optimize: cache length
     let ks = keys(mapObj);
     let n = len(ks);
     let i = 0;
