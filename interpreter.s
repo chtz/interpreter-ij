@@ -218,17 +218,21 @@ def applyInfixOperator(left, operator, right, resourceQuota) {
     
     if (operator == "+") {
         if (typeof(left) == "array" && typeof(right) == "array") {
-            // Clone left list to result list
+            // More efficient array concatenation
+            let leftLen = len(left);
+            let rightLen = len(right);
             let resultList = [];
+            
+            // Pre-allocate result size if possible by pushing elements
             let i = 0;
-            while (i < len(left)) {
+            while (i < leftLen) {
                 push(resultList, left[i]);
                 i = i + 1;
             }
-            let j = 0;
-            while (j < len(right)) {
-                push(resultList, right[j]);
-                j = j + 1;
+            i = 0;
+            while (i < rightLen) {
+                push(resultList, right[i]);
+                i = i + 1;
             }
             return resultList;
         }
@@ -3434,8 +3438,9 @@ def checkEvaluationSteps(ctx, position) {
 // Helper function to check if map has key (no 'in' operator, no direct containsKey)
 def mapHasKey(mapObj, key) {
     let ks = keys(mapObj);
+    let n = len(ks);
     let i = 0;
-    while (i < len(ks)) {
+    while (i < n) {
         if (ks[i] == key) {
             return true;
         }
