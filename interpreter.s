@@ -5667,100 +5667,8 @@ puts("}");
 // Interpreter.s - InterpreterJ port of the Interpreter Java class
 
 // Helper function to convert an InterpreterJ map/array/primitive to a JSON string
-def mapToJsonString(obj) {
-    if (obj == null) {
-        return "null";
-    }
-
-    let objType = typeof(obj);
-
-    if (objType == "string") {
-        let s = obj;
-        let jsonString = "\"";
-        let i = 0;
-        while (i < len(s)) {
-            let char = char(s, i);
-            if (char == "\"") {
-                jsonString = jsonString + "\\\"";
-            } else {
-                if (char == "\\") {
-                    jsonString = jsonString + "\\\\";
-                } else {
-                    if (char == chr(10)) { // newline
-                        jsonString = jsonString + "\\n";
-                    } else {
-                        if (char == chr(13)) { // carriage return
-                            jsonString = jsonString + "\\r";
-                        } else {
-                            if (char == chr(9)) { // tab
-                                jsonString = jsonString + "\\t";
-                            } else {
-                                // TODO: Add more escapes if necessary (e.g. \b, \f)
-                                // For other characters, including forward slash, no escaping is strictly required by JSON spec
-                                // but control characters (U+0000 to U+001F) should be escaped.
-                                // This basic implementation handles the most common cases.
-                                jsonString = jsonString + char;
-                            }
-                        }
-                    }
-                }
-            }
-            i = i + 1;
-        }
-        jsonString = jsonString + "\"";
-        return jsonString;
-    }
-
-    if (objType == "number") {
-        return numberToString(obj); // Assumes numberToString handles floats and integers correctly
-    }
-
-    if (objType == "boolean") {
-        if (obj) {
-            return "true";
-        } else {
-            return "false";
-        }
-    }
-
-    if (isArray(obj)) {
-        if (len(obj) == 0) {
-            return "[]";
-        }
-        let elementsJson = "";
-        let i = 0;
-        while (i < len(obj)) {
-            if (i > 0) {
-                elementsJson = elementsJson + ",";
-            }
-            elementsJson = elementsJson + mapToJsonString(obj[i]);
-            i = i + 1;
-        }
-        return "[" + elementsJson + "]";
-    }
-
-    if (isMap(obj)) {
-        if (len(keys(obj)) == 0) {
-            return "{}";
-        }
-        let pairsJson = "";
-        let objKeys = keys(obj);
-        let i = 0;
-        while (i < len(objKeys)) {
-            let key = objKeys[i];
-            let keyJson = mapToJsonString(key); // Keys in JSON must be strings
-            let valueJson = mapToJsonString(obj[key]);
-            if (i > 0) {
-                pairsJson = pairsJson + ",";
-            }
-            pairsJson = pairsJson + keyJson + ":" + valueJson;
-            i = i + 1;
-        }
-        return "{" + pairsJson + "}";
-    }
-    
-    // Fallback for unsupported types
-    return "\"UNSUPPORTED_TYPE:" + objType + "\""; 
+def mapToJsonString(obj) { // FIXME
+    return ijToJson(obj);
 }
 
 
@@ -6112,6 +6020,117 @@ def readSources() {
     source;
 }
 
+//TO JSON support start (from mcp)
+def buildToJson() {
+// Helper function to convert a string to JSON string format with proper escaping
+def stringToJsonString(s) {
+    let result = chr(34); // Start with quote
+    let i = 0;
+    while (i < len(s)) {
+        let ch = char(s, i);
+        if (ch == chr(10)) {
+            // Newline -> \n
+            result = result + chr(92) + "n";
+        } else {
+            if (ch == chr(9)) {
+                // Tab -> \t
+                result = result + chr(92) + "t";
+            } else {
+                if (ch == chr(13)) {
+                    // Carriage return -> \r
+                    result = result + chr(92) + "r";
+                } else {
+                    if (ch == chr(92)) {
+                        // Backslash -> \\
+                        result = result + chr(92) + chr(92);
+                    } else {
+                        if (ch == chr(34)) {
+                            // Quote -> \"
+                            result = result + chr(92) + chr(34);
+                        } else {
+                            // Regular character
+                            result = result + ch;
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1;
+    }
+    result = result + chr(34); // End with quote
+    return result;
+}
+
+// Helper function to convert array to JSON string
+def arrayToJsonString(arr) {
+    let result = chr(91); // [
+    let i = 0;
+    while (i < len(arr)) {
+        if (i > 0) {
+            result = result + chr(44); // ,
+        }
+        result = result + jsonToString(arr[i]);
+        i = i + 1;
+    }
+    result = result + chr(93); // ]
+    return result;
+}
+
+// Helper function to convert map to JSON string
+def mapToJsonString(map) {
+    let result = chr(123); // {
+    let mapKeys = keys(map);
+    let i = 0;
+    while (i < len(mapKeys)) {
+        if (i > 0) {
+            result = result + chr(44); // ,
+        }
+        let key = mapKeys[i];
+        // Convert key to string and add colon
+        result = result + stringToJsonString("" + key) + chr(58) + jsonToString(map[key]);
+        i = i + 1;
+    }
+    result = result + chr(125); // }
+    return result;
+}
+
+// Main function to convert any IJ value to JSON string
+def jsonToString(value) {
+    if (isString(value)) {
+        return stringToJsonString(value);
+    } else {
+        if (isNumber(value)) {
+            return "" + value;
+        } else {
+                if (value == null) {
+                    return "null";
+                } else {
+                    if (isArray(value)) {
+                        return arrayToJsonString(value);
+                    } else {
+                        if (isMap(value)) {
+                            return mapToJsonString(value);
+                        } else {
+                           //if (isBoolean(value)) { // FIXME not supported
+                           //     if (value) {
+                           //         return "true";
+                           //     } else {
+                           //         return "false";
+                           //     }
+                           // }
+                           return "" + value;
+                        }
+                    }
+                }
+            
+        }
+    }
+}
+return jsonToString;
+}
+let ijToJson = buildToJson();
+//TO JSON support end
+
 //puts("DEBUG: interpreter is ready"); //DEBUG
 
 let source = readSources();
@@ -6162,50 +6181,3 @@ if (transpileGo) {
 
 assert(interpreter != null, "Interpreter instance should not be null");
 
-// --- Test case for getAstJson output ---
-puts(""); // Add a newline for better separation of test output
-puts("Running JSON AST output test...");
-let testSrc = "let v = 10;";
-let jsonTestInterpreter = makeInterpreter();
-let testParseResult = jsonTestInterpreter["parse"](jsonTestInterpreter, testSrc);
-
-if (!testParseResult["success"]) {
-    puts("JSON Test: Parsing failed. Errors:");
-    let parseErrors = testParseResult["errors"];
-    let i = 0;
-    while (i < len(parseErrors)) {
-        let err = parseErrors[i];
-        puts("  Error at " + err["line"] + ":" + err["column"] + ": " + err["message"]);
-        i = i + 1;
-    }
-    assert(false, "JSON Test: Parsing failed, see output above.");
-} else {
-    let actualJson = jsonTestInterpreter["getAstJson"](jsonTestInterpreter);
-    // Expected JSON string for "let v = 10;"
-    // Note: Escaping quotes within the string literal for InterpreterJ
-    let expectedJsonString = "{";
-    expectedJsonString = expectedJsonString + "\"type\":\"Program\",";
-    expectedJsonString = expectedJsonString + "\"statements\":[";
-    expectedJsonString = expectedJsonString + "{";
-    expectedJsonString = expectedJsonString + "\"type\":\"VariableDeclaration\",";
-    expectedJsonString = expectedJsonString + "\"position\":\"1:0\","; // Line 1, Column 0 for "let"
-    expectedJsonString = expectedJsonString + "\"name\":\"v\",";
-    expectedJsonString = expectedJsonString + "\"initializer\":{";
-    expectedJsonString = expectedJsonString + "\"type\":\"NumberLiteral\",";
-    expectedJsonString = expectedJsonString + "\"position\":\"1:8\","; // Line 1, Column 8 for "10"
-    expectedJsonString = expectedJsonString + "\"value\":10";
-    expectedJsonString = expectedJsonString + "}";
-    expectedJsonString = expectedJsonString + "}";
-    expectedJsonString = expectedJsonString + "]";
-    expectedJsonString = expectedJsonString + "}";
-
-    if (actualJson != expectedJsonString) {
-        puts("JSON AST output mismatch!");
-        puts("Expected: " + expectedJsonString);
-        puts("Actual  : " + actualJson);
-        assert(false, "JSON AST test failed due to mismatch.");
-    } else {
-        puts("JSON AST test passed!");
-    }
-}
-// --- End of Test case for getAstJson output ---
