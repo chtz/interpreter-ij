@@ -309,110 +309,9 @@ def parseJson(s) {
     return result["value"];
 }
 
-// Helper function to convert a string to JSON string format with proper escaping
-def stringToJsonString(s) {
-    let result = chr(34); // Start with quote
-    let i = 0;
-    while (i < len(s)) {
-        let ch = char(s, i);
-        if (ch == chr(10)) {
-            // Newline -> \n
-            result = result + chr(92) + "n";
-        } else {
-            if (ch == chr(9)) {
-                // Tab -> \t
-                result = result + chr(92) + "t";
-            } else {
-                if (ch == chr(13)) {
-                    // Carriage return -> \r
-                    result = result + chr(92) + "r";
-                } else {
-                    if (ch == chr(92)) {
-                        // Backslash -> \\
-                        result = result + chr(92) + chr(92);
-                    } else {
-                        if (ch == chr(34)) {
-                            // Quote -> \"
-                            result = result + chr(92) + chr(34);
-                        } else {
-                            // Regular character
-                            result = result + ch;
-                        }
-                    }
-                }
-            }
-        }
-        i = i + 1;
-    }
-    result = result + chr(34); // End with quote
-    return result;
-}
-
-// Helper function to convert array to JSON string
-def arrayToJsonString(arr) {
-    let result = chr(91); // [
-    let i = 0;
-    while (i < len(arr)) {
-        if (i > 0) {
-            result = result + chr(44); // ,
-        }
-        result = result + jsonToString(arr[i]);
-        i = i + 1;
-    }
-    result = result + chr(93); // ]
-    return result;
-}
-
-// Helper function to convert map to JSON string
-def mapToJsonString(map) {
-    let result = chr(123); // {
-    let mapKeys = keys(map);
-    let i = 0;
-    while (i < len(mapKeys)) {
-        if (i > 0) {
-            result = result + chr(44); // ,
-        }
-        let key = mapKeys[i];
-        // Convert key to string and add colon
-        result = result + stringToJsonString("" + key) + chr(58) + jsonToString(map[key]);
-        i = i + 1;
-    }
-    result = result + chr(125); // }
-    return result;
-}
-
-// Main function to convert any IJ value to JSON string
-def jsonToString(value) {
-    if (isString(value)) {
-        return stringToJsonString(value);
-    } else {
-        if (isNumber(value)) {
-            return "" + value;
-        } else {
-                if (value == null) {
-                    return "null";
-                } else {
-                    if (isArray(value)) {
-                        return arrayToJsonString(value);
-                    } else {
-                        if (isMap(value)) {
-                            return mapToJsonString(value);
-                        } else {
-                           //if (isBoolean(value)) { // FIXME not supported
-                           //     if (value) {
-                           //         return "true";
-                           //     } else {
-                           //         return "false";
-                           //     }
-                           // }
-                           return "" + value;
-                        }
-                    }
-                }
-            
-        }
-    }
-}
+// to json stuff moved to interpreter
+//let jsonToString = buildToJson();
+let jsonToString = ijToJson;
 
 // Command loop
 
@@ -444,13 +343,6 @@ while (line != null) {
           "capabilities": {
             "tools": {
               "listChanged": true
-            },
-            "resources": {
-              "subscribe": false,
-              "listChanged": false
-            },
-            "prompts": {
-              "listChanged": false
             }
           },
           "serverInfo": {
@@ -475,20 +367,48 @@ while (line != null) {
                   }
                 }
               }
+            },
+            {
+              "name": "parse_script",
+              "description": "Parses a script in the IJ language and returns AST as JSON.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "script": {
+                    "type": "string",
+                    "description": "The IJ script to execute."
+                  }
+                }
+              }
             }
           ]
         }));
     }
 
     if (method == "tools/call") {
-        puts(result(p["id"],{
-          "content": [
-            {
-              "type": "text",
-              "text": eval(p["params"]["arguments"]["script"])
-            }
-          ]
-        }));
+        let name = p["params"]["name"];
+        
+        if (name == "execute_script") {
+            puts(result(p["id"],{
+            "content": [
+                {
+                "type": "text",
+                "text": eval(p["params"]["arguments"]["script"])
+                }
+            ]
+            }));
+        }
+
+        if (name == "parse_script") {
+            puts(result(p["id"],{
+            "content": [
+                {
+                "type": "text",
+                "text": ast(p["params"]["arguments"]["script"])
+                }
+            ]
+            }));
+        }
     }
 
     line = gets();

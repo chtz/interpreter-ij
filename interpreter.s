@@ -57,9 +57,14 @@ def arrayLiteralToJson(self) {
     }
 
     // Join elements with comma + space
-    let elementsJson = joinWithCommaSpace(elementsParts);
+    // let elementsJson = joinWithCommaSpace(elementsParts); // No longer needed
 
-    return '{ "type": "ArrayLiteral", "position": "' + self["position"] + '", "elements": [ ' + elementsJson + ' ] }';
+    // return '{ "type": "ArrayLiteral", "position": "' + self["position"] + '", "elements": [ ' + elementsJson + ' ] }';
+    let result = {};
+    result["type"] = "ArrayLiteral";
+    result["position"] = self["position"];
+    result["elements"] = elementsParts;
+    return result;
 }
 
 def arrayLiteralToGo(self) {
@@ -473,7 +478,13 @@ def makeIndexExpression(collectionNode, indexNode, position) {
             indexJson = node["index"]["toJson"](node["index"])
         }
         // position should be stringified, assuming position already a string
-        return '{ "type": "IndexExpression", "position": "' + node["position"] + '", "collection": ' + collectionJson + ', "index": ' + indexJson + ' }'
+        // return '{ "type": "IndexExpression", "position": "' + node["position"] + '", "collection": ' + collectionJson + ', "index": ' + indexJson + ' }'
+        let result = {};
+        result["type"] = "IndexExpression";
+        result["position"] = node["position"];
+        result["collection"] = collectionJson; // collectionJson is already map or null
+        result["index"] = indexJson; // indexJson is already map or null
+        return result;
     }
     node["toJson"] = toJson;
 
@@ -575,7 +586,12 @@ def ReturnStatement_toJson(self) {
     if (self["value"] != null) {
         valueJson = self["value"]["toJson"](self["value"]);
     }
-    return '{ "type": "ReturnStatement", "position": "' + self["position"] + '", "value": ' + valueJson + ' }';
+    // return '{ "type": "ReturnStatement", "position": "' + self["position"] + '", "value": ' + valueJson + ' }';
+    let result = {};
+    result["type"] = "ReturnStatement";
+    result["position"] = self["position"];
+    result["value"] = valueJson; // valueJson is already a map or null
+    return result;
 }
 
 def ReturnStatement_toGo(self) {
@@ -624,19 +640,25 @@ def ReturnStatement_toGo(self) {
     node["evaluate"] = evaluate;
 
     def toJson(self) {
-      let conditionJson = "null";
+      let conditionJson = null; 
       if (node["condition"] != null) {
         conditionJson = node["condition"]["toJson"](node["condition"]);
       } else {
         // do nothing
       }
-      let bodyJson = "null";
+      let bodyJson = null; 
       if (node["body"] != null) {
         bodyJson = node["body"]["toJson"](node["body"]);
       } else {
         // do nothing
       }
-      return '{ "type": "WhileStatement", "position": "' + node["position"] + '", "condition": ' + conditionJson + ', "body": ' + bodyJson + ' }';
+      // return '{ "type": "WhileStatement", "position": "' + node["position"] + '", "condition": ' + conditionJson + ', "body": ' + bodyJson + ' }';
+      let result = {};
+      result["type"] = "WhileStatement";
+      result["position"] = node["position"];
+      result["condition"] = conditionJson; // conditionJson is already a map or null
+      result["body"] = bodyJson; // bodyJson is already a map or null
+      return result;
     }
     node["toJson"] = toJson;
 
@@ -709,11 +731,17 @@ def assignmentStatementToJson(self) {
         // Assumes that value has "toJson" function attached if it's not null
         valueJson = self["value"]["toJson"](self["value"]);
     } else {
-        valueJson = "null";
+        valueJson = null; 
     }
-    return '{ "type": "AssignmentStatement", "position": "' + self["position"] +
-        '", "name": "' + self["name"] +
-        '", "value": ' + valueJson + ' }';
+    // return '{ "type": "AssignmentStatement", "position": "' + self["position"] +
+    //     '", "name": "' + self["name"] +
+    //     '", "value": ' + valueJson + ' }';
+    let result = {};
+    result["type"] = "AssignmentStatement";
+    result["position"] = self["position"];
+    result["name"] = self["name"];
+    result["value"] = valueJson; // valueJson is already a map or null
+    return result;
 }
 
 def assignmentStatementToGo(self) {
@@ -775,9 +803,14 @@ def toJsonExpressionStatement(self) {
         // Assumes expression node has "toJson" as a field
         expr = self["expression"]["toJson"](self["expression"]);
     } else {
-        expr = "null";
+        expr = null;
     }
-    return '{ "type": "ExpressionStatement", "position": "' + self["position"] + '", "expression": ' + expr + ' }';
+    // return '{ "type": "ExpressionStatement", "position": "' + self["position"] + '", "expression": ' + expr + ' }';
+    let result = {};
+    result["type"] = "ExpressionStatement";
+    result["position"] = self["position"];
+    result["expression"] = expr; // expr is already a map or null
+    return result;
 }
 
 def toGoJsonExpressionStatement(self) {
@@ -839,8 +872,15 @@ def infixExpressionToJson(self) {
     }
     operatorString = self["operator"];
     let positionString = self["position"];
-    let json = '{ "type": "InfixExpression", "position": "' + positionString + '", "left": ' + leftJson + ', "operator": "' + operatorString + '", "right": ' + rightJson + ' }';
-    return json;
+    // let json = '{ "type": "InfixExpression", "position": "' + positionString + '", "left": ' + leftJson + ', "operator": "' + operatorString + '", "right": ' + rightJson + ' }';
+    // return json;
+    let result = {};
+    result["type"] = "InfixExpression";
+    result["position"] = positionString;
+    result["left"] = leftJson; // leftJson is already map or null
+    result["operator"] = operatorString;
+    result["right"] = rightJson; // rightJson is already map or null
+    return result;
 }
 
 def infixExpressionToGo(self) {
@@ -952,8 +992,13 @@ def nullLiteralEvaluate(self, context) {
 
 // Produces JSON for the NullLiteral node, strictly no string escaping
 def nullLiteralToJson(self) {
-    let json = '{ "type": "NullLiteral", "position": "' + self["position"] + '", "value": null }';
-    return json;
+    // let json = '{ "type": "NullLiteral", "position": "' + self["position"] + '", "value": null }';
+    // return json;
+    let result = {};
+    result["type"] = "NullLiteral";
+    result["position"] = self["position"];
+    result["value"] = null;
+    return result;
 }
 
 def nullLiteralToGo(self) {
@@ -1103,13 +1148,18 @@ def blockStatementToJson(self) {
     idx = 0;
     let arrLen = len(arr);
     while (idx < arrLen) {
-        elementsJson = elementsJson + arr[idx];
-        if (idx < arrLen - 1) {
-            elementsJson = elementsJson + "," + chr(10);
-        }
+        // elementsJson = elementsJson + arr[idx]; // No longer needed
+        // if (idx < arrLen - 1) { // No longer needed
+        //     elementsJson = elementsJson + "," + chr(10); // No longer needed
+        // } // No longer needed
         idx = idx + 1;
     }
-    return '{ "type": "BlockStatement", "position": "' + self["position"] + '", "statements": [ ' + elementsJson + ' ] }';
+    // return '{ "type": "BlockStatement", "position": "' + self["position"] + '", "statements": [ ' + elementsJson + ' ] }';
+    let result = {};
+    result["type"] = "BlockStatement";
+    result["position"] = self["position"];
+    result["statements"] = arr; // arr directly contains the maps from child toJson calls
+    return result;
 }
 
 def blockStatementToGo(self) {
@@ -1233,15 +1283,23 @@ def functionDeclarationToJson(node) {
     }
 
     // Handle body toJson
-    let bodyJson = "null";
+    let bodyJson = null; 
     if (node["body"] != null) {
         // Assume body is a map with a "toJson" function
         bodyJson = node["body"]["toJson"](node["body"]);
     }
 
     // Build and return the JSON string according to specification
-    let s = '{ "type": "FunctionDeclaration", "position": "' + node["position"] + '", "name": "' + node["name"] + '", "parameters": [ ' + parametersJson + ' ], "body": ' + bodyJson + ' }';
-    return s;
+    // let s = '{ "type": "FunctionDeclaration", "position": "' + node["position"] + '", "name": "' + node["name"] + '", "parameters": [ ' + parametersJson + ' ], "body": ' + bodyJson + ' }';
+    // return s;
+    let result = {};
+    result["type"] = "FunctionDeclaration";
+    result["position"] = node["position"];
+    result["name"] = node["name"];
+    // node["parameters"] is already an array of strings e.g. ["a", "b"]
+    result["parameters"] = node["parameters"]; 
+    result["body"] = bodyJson; // bodyJson is already a map or null
+    return result;
 }
 
 def intString(i) { // HACK to compensate Java-based Interpreter error :-)
@@ -1305,12 +1363,17 @@ def numberLiteralEvaluate(self, context) {
 
 // toJson function for NumberLiteral node
 def numberLiteralToJson(node) {
-    let typePart = '{ "type": "NumberLiteral", "position": "';
-    let posPart = node["position"];
-    let valuePart = '", "value": ';
-    let valVal = node["value"];
-    let endPart = " }";
-    return typePart + posPart + valuePart + valVal + endPart;
+    // let typePart = '{ "type": "NumberLiteral", "position": "';
+    // let posPart = node["position"];
+    // let valuePart = '", "value": ';
+    // let valVal = node["value"];
+    // let endPart = " }";
+    // return typePart + posPart + valuePart + valVal + endPart;
+    let result = {};
+    result["type"] = "NumberLiteral";
+    result["position"] = node["position"];
+    result["value"] = node["value"];
+    return result;
 }
 
 def numberLiteralToGo(self) {
@@ -1366,7 +1429,12 @@ def stringLiteralToJson(thisNode) {
     let valueString = thisNode["value"];
     // No string escaping allowed, so produce only correct non-escaped JSON
     // Only single-line, simple, explicit building
-    return '{ "type": "' + typeString + '", "position": "' + positionString + '", "value": "' + valueString + '" }';
+    // return '{ "type": "' + typeString + '", "position": "' + positionString + '", "value": "' + valueString + '" }';
+    let result = {};
+    result["type"] = typeString;
+    result["position"] = positionString;
+    result["value"] = valueString;
+    return result;
 }
 
 def stringLiteralToGo(self) {
@@ -1421,11 +1489,16 @@ def evaluateBooleanLiteral(self, context) {
 
 // toJson - returns JSON string
 def toJsonBooleanLiteral(self) {
-    if (self["value"]) {
-        return '{ "type": "BooleanLiteral", "position": "' + self["position"] + '", "value": true }';
-    } else {
-        return '{ "type": "BooleanLiteral", "position": "' + self["position"] + '", "value": false }';
-    }
+    // if (self["value"]) {
+    //     return '{ "type": "BooleanLiteral", "position": "' + self["position"] + '", "value": true }';
+    // } else {
+    //     return '{ "type": "BooleanLiteral", "position": "' + self["position"] + '", "value": false }';
+    // }
+    let result = {};
+    result["type"] = "BooleanLiteral";
+    result["position"] = self["position"];
+    result["value"] = self["value"];
+    return result;
 }
 
 def toGoBooleanLiteral(self) {
@@ -1462,7 +1535,12 @@ def identifierEvaluate(self, context) {
 def identifierToJson(self) {
     let position = self["position"];
     let name = self["name"];
-    return '{ "type": "Identifier", "position": "' + position + '", "name": "' + name + '" }';
+    // return '{ "type": "Identifier", "position": "' + position + '", "name": "' + name + '" }';
+    let result = {};
+    result["type"] = "Identifier";
+    result["position"] = position;
+    result["name"] = name;
+    return result;
 }
 
 def identifierToGo(self) {
@@ -2521,9 +2599,29 @@ def CallExpression_toJson(self) {
     }
 
     // No string escaping or newlines!
-    return '{ "type": "CallExpression", "position": "' +
-        self["position"] + '", "callee": ' + calleeJson +
-        ', "arguments": [' + argsJson + '] }';
+    // return '{ "type": "CallExpression", "position": "' +
+    //     self["position"] + '", "callee": ' + calleeJson +
+    //     ', "arguments": [' + argsJson + '] }';
+    // argsJson is a string of comma-separated JSONs, need to convert to list of maps
+    let argsList = [];
+    let k = 0;
+    let argNodes = self["arguments"];
+    while (k < len(argNodes)) {
+        let argNode = argNodes[k];
+        let itemMap = null;
+        if (argNode != null && argNode["toJson"] != null) {
+            itemMap = argNode["toJson"](argNode);
+        }
+        push(argsList, itemMap);
+        k = k + 1;
+    }
+
+    let result = {};
+    result["type"] = "CallExpression";
+    result["position"] = self["position"];
+    result["callee"] = calleeJson; // calleeJson is already map or null
+    result["arguments"] = argsList;
+    return result;
 }
 
 def CallExpression_toGo(self) {
@@ -2650,28 +2748,35 @@ def ifStatementEvaluate(self, context) {
 
 // Serialize the IfStatement to json (NO escaping, strict format! No newlines in strings!)
 def ifStatementToJson(self) {
-    let condPart = null;
+    let condPart = null; 
     if (self["condition"] != null) {
         condPart = self["condition"]["toJson"](self["condition"]);
     } else {
-        condPart = "null";
+        condPart = null; 
     }
 
     let consPart = null;
     if (self["consequence"] != null) {
         consPart = self["consequence"]["toJson"](self["consequence"]);
     } else {
-        consPart = "null";
+        consPart = null; 
     }
 
     let altPart = null;
     if (self["alternative"] != null) {
         altPart = self["alternative"]["toJson"](self["alternative"]);
     } else {
-        altPart = "null";
+        altPart = null; 
     }
 
-    return '{ "type": "IfStatement", "position": "' + self["position"] + '", "condition": ' + condPart + ', "consequence": ' + consPart + ', "alternative": ' + altPart + ' }';
+    // return '{ "type": "IfStatement", "position": "' + self["position"] + '", "condition": ' + condPart + ', "consequence": ' + consPart + ', "alternative": ' + altPart + ' }';
+    let result = {};
+    result["type"] = "IfStatement";
+    result["position"] = self["position"];
+    result["condition"] = condPart; // condPart is already a map or null
+    result["consequence"] = consPart; // consPart is already a map or null
+    result["alternative"] = altPart; // altPart is already a map or null
+    return result;
 }
 
 def ifStatementToGo(self) {
@@ -3121,10 +3226,16 @@ def PrefixExpression_toJson(self) {
         rightJson = rightNode["toJson"](rightNode);
     }
 
-    return '{ "type": "PrefixExpression", "position": "' +
-        self["position"] + '", "operator": "' +
-        self["operator"] + '", "right": ' +
-        rightJson + ' }';
+    // return '{ "type": "PrefixExpression", "position": "' +
+    //     self["position"] + '", "operator": "' +
+    //     self["operator"] + '", "right": ' +
+    //     rightJson + ' }';
+    let result = {};
+    result["type"] = "PrefixExpression";
+    result["position"] = self["position"];
+    result["operator"] = self["operator"];
+    result["right"] = rightJson; // rightJson is already map or null
+    return result;
 }
 
 def PrefixExpression_toGo(self) {
@@ -3504,19 +3615,26 @@ def assignToMap(mapObj, key, valueToAssign, position) {
 
 // JSON serialization for the node
 def indexAssignmentStatement_toJson(self) {
-    let collectionJson = "null";
+    let collectionJson = null; 
     if (self["collection"] != null) {
         collectionJson = self["collection"]["toJson"](self["collection"]);
     }
-    let indexJson = "null";
+    let indexJson = null; 
     if (self["index"] != null) {
         indexJson = self["index"]["toJson"](self["index"]);
     }
-    let valueJson = "null";
+    let valueJson = null; 
     if (self["value"] != null) {
         valueJson = self["value"]["toJson"](self["value"]);
     }
-    return '{ "type": "IndexAssignmentStatement", "position": "' + self["position"] + '", "collection": ' + collectionJson + ', "index": ' + indexJson + ', "value": ' + valueJson + ' }';
+    // return '{ "type": "IndexAssignmentStatement", "position": "' + self["position"] + '", "collection": ' + collectionJson + ', "index": ' + indexJson + ', "value": ' + valueJson + ' }';
+    let result = {};
+    result["type"] = "IndexAssignmentStatement";
+    result["position"] = self["position"];
+    result["collection"] = collectionJson; // collectionJson is already map or null
+    result["index"] = indexJson; // indexJson is already map or null
+    result["value"] = valueJson; // valueJson is already map or null
+    return result;
 }
 
 def indexAssignmentStatement_toGo(self) {
@@ -3630,31 +3748,38 @@ def makeMapLiteral(pairs, position) {
       if (keyNode != null) {
         keyJson = keyNode["toJson"](keyNode);
       }
-      let valueJson = "null";
+      let valueJson = null; // Changed from "null" string to actual null
       if (valueNode != null) {
         valueJson = valueNode["toJson"](valueNode);
       }
 
-      // Append as string: { "key": <keyJson>, "value": <valueJson> }
-      let pairJson = '{ "key": ' + keyJson + ', "value": ' + valueJson + ' }';
-      push(pairsJsonArray, pairJson);
+      // Append as map: { "key": <keyJson>, "value": <valueJson> }
+      let pairMap = {};
+      pairMap["key"] = keyJson;
+      pairMap["value"] = valueJson;
+      push(pairsJsonArray, pairMap);
       i = i + 1;
     }
 
-    // Join comma-separated
-    let pairsJson = "";
-    i = 0;
-    while (i < len(pairsJsonArray)) {
-      if (i > 0) {
-        pairsJson = pairsJson + ", ";
-      }
-      pairsJson = pairsJson + pairsJsonArray[i];
-      i = i + 1;
-    }
+    // // Join comma-separated // No longer needed
+    // let pairsJson = "";
+    // i = 0;
+    // while (i < len(pairsJsonArray)) {
+    //   if (i > 0) {
+    //     pairsJson = pairsJson + ", ";
+    //   }
+    //   pairsJson = pairsJson + pairsJsonArray[i];
+    //   i = i + 1;
+    // }
 
     // Build main object
-    let result = '{ "type": "MapLiteral", "position": "' + node["position"] + '", "pairs": [ ' + pairsJson + ' ] }';
-    return result;
+    // let resultString = '{ "type": "MapLiteral", "position": "' + node["position"] + '", "pairs": [ ' + pairsJson + ' ] }';
+    // return resultString;
+    let resultMap = {};
+    resultMap["type"] = "MapLiteral";
+    resultMap["position"] = node["position"];
+    resultMap["pairs"] = pairsJsonArray;
+    return resultMap;
   }
   node["toJson"] = toJson;
 
@@ -3752,26 +3877,31 @@ def makeProgram() {
     // toJson method
     def toJson(self) {
         let stmts = program["statements"];
-        let parts = [];
+        let parts = []; // This will now collect maps
         let n = len(stmts);
         let i = 0;
         while (i < n) {
+            // Assuming stmts[i]["toJson"] now returns a map
             push(parts, stmts[i]["toJson"](stmts[i]));
             i = i + 1;
         }
-        // Join with ",\n" (not a real newline inside the string, just comma and backslash-n as two characters)
-        let sep = ","; // FIXME ",\n";
-        let out = "";
-        let j = 0;
-        while (j < len(parts)) {
-            if (j == 0) {
-                out = parts[j];
-            } else {
-                out = out + sep + parts[j];
-            }
-            j = j + 1;
-        }
-        return '{ "type": "Program", "statements": [ ' + out + ' ] }';
+        // // Join with ",\n" (not a real newline inside the string, just comma and backslash-n as two characters)
+        // let sep = ","; // FIXME ",\n"; // No longer needed
+        // let out = ""; // No longer needed
+        // let j = 0; // No longer needed
+        // while (j < len(parts)) { // No longer needed
+        //     if (j == 0) { // No longer needed
+        //         out = parts[j]; // No longer needed
+        //     } else { // No longer needed
+        //         out = out + sep + parts[j]; // No longer needed
+        //     } // No longer needed
+        //     j = j + 1; // No longer needed
+        // } // No longer needed
+        // return '{ "type": "Program", "statements": [ ' + out + ' ] }';
+        let result = {};
+        result["type"] = "Program";
+        result["statements"] = parts; // 'parts' is now a list of maps
+        return result;
     }
     program["toJson"] = toJson;
 
@@ -3826,15 +3956,20 @@ def evaluateVariableDeclaration(self, context) {
 
 // JSON representation
 def variableDeclarationToJson(self) {
-    let result = '{ "type": "VariableDeclaration", "position": "' + self["position"] + '", "name": "' + self["name"] + '", "initializer": '
-    let init = self["initializer"]
+    // let result = '{ "type": "VariableDeclaration", "position": "' + self["position"] + '", "name": "' + self["name"] + '", "initializer": '
+    let init = self["initializer"];
+    let initJson = null; 
     if (init != null) {
-        result = result + init["toJson"](init)
-    } else {
-        result = result + 'null'
+        initJson = init["toJson"](init); // initJson is already a map or null
     }
-    result = result + ' }'
-    return result
+    // result = result + ' }' // No longer needed
+    // return result
+    let mapResult = {};
+    mapResult["type"] = "VariableDeclaration";
+    mapResult["position"] = self["position"];
+    mapResult["name"] = self["name"];
+    mapResult["initializer"] = initJson;
+    return mapResult;
 }
 
 def variableDeclarationToGo(self) {
@@ -5531,6 +5666,10 @@ puts("}");
 
 // Interpreter.s - InterpreterJ port of the Interpreter Java class
 
+// Helper function to convert an InterpreterJ map/array/primitive to a JSON string
+def mapToJsonString(obj) { // FIXME
+    return ijToJson(obj);
+}
 
 
 // Interpreter map holding state and library initializers
@@ -5672,7 +5811,9 @@ def makeInterpreter() {
         if (self["ast"] == null) {
             return null;
         }
-        return self["ast"]["toJson"](self["ast"]);
+        // self["ast"]["toJson"](self["ast"]) now returns a map
+        let astMap = self["ast"]["toJson"](self["ast"]);
+        return mapToJsonString(astMap);
     }
     interpreter["getAstJson"] = getAstJson;
 
@@ -5879,6 +6020,117 @@ def readSources() {
     source;
 }
 
+//TO JSON support start (from mcp)
+def buildToJson() {
+// Helper function to convert a string to JSON string format with proper escaping
+def stringToJsonString(s) {
+    let result = chr(34); // Start with quote
+    let i = 0;
+    while (i < len(s)) {
+        let ch = char(s, i);
+        if (ch == chr(10)) {
+            // Newline -> \n
+            result = result + chr(92) + "n";
+        } else {
+            if (ch == chr(9)) {
+                // Tab -> \t
+                result = result + chr(92) + "t";
+            } else {
+                if (ch == chr(13)) {
+                    // Carriage return -> \r
+                    result = result + chr(92) + "r";
+                } else {
+                    if (ch == chr(92)) {
+                        // Backslash -> \\
+                        result = result + chr(92) + chr(92);
+                    } else {
+                        if (ch == chr(34)) {
+                            // Quote -> \"
+                            result = result + chr(92) + chr(34);
+                        } else {
+                            // Regular character
+                            result = result + ch;
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1;
+    }
+    result = result + chr(34); // End with quote
+    return result;
+}
+
+// Helper function to convert array to JSON string
+def arrayToJsonString(arr) {
+    let result = chr(91); // [
+    let i = 0;
+    while (i < len(arr)) {
+        if (i > 0) {
+            result = result + chr(44); // ,
+        }
+        result = result + jsonToString(arr[i]);
+        i = i + 1;
+    }
+    result = result + chr(93); // ]
+    return result;
+}
+
+// Helper function to convert map to JSON string
+def mapToJsonString(map) {
+    let result = chr(123); // {
+    let mapKeys = keys(map);
+    let i = 0;
+    while (i < len(mapKeys)) {
+        if (i > 0) {
+            result = result + chr(44); // ,
+        }
+        let key = mapKeys[i];
+        // Convert key to string and add colon
+        result = result + stringToJsonString("" + key) + chr(58) + jsonToString(map[key]);
+        i = i + 1;
+    }
+    result = result + chr(125); // }
+    return result;
+}
+
+// Main function to convert any IJ value to JSON string
+def jsonToString(value) {
+    if (isString(value)) {
+        return stringToJsonString(value);
+    } else {
+        if (isNumber(value)) {
+            return "" + value;
+        } else {
+                if (value == null) {
+                    return "null";
+                } else {
+                    if (isArray(value)) {
+                        return arrayToJsonString(value);
+                    } else {
+                        if (isMap(value)) {
+                            return mapToJsonString(value);
+                        } else {
+                           //if (isBoolean(value)) { // FIXME not supported
+                           //     if (value) {
+                           //         return "true";
+                           //     } else {
+                           //         return "false";
+                           //     }
+                           // }
+                           return "" + value;
+                        }
+                    }
+                }
+            
+        }
+    }
+}
+return jsonToString;
+}
+let ijToJson = buildToJson();
+//TO JSON support end
+
 //puts("DEBUG: interpreter is ready"); //DEBUG
 
 let source = readSources();
@@ -5928,3 +6180,4 @@ if (transpileGo) {
 }
 
 assert(interpreter != null, "Interpreter instance should not be null");
+
