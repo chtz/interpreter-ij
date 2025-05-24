@@ -1343,8 +1343,8 @@ def makeNumberLiteral(value, position) {
 }
 
 // Evaluate function for NumberLiteral node
-def numberLiteralEvaluate(node, context) {
-    return node["value"];
+def numberLiteralEvaluate(self, context) {
+    return self["value"];
 }
 
 // toJson function for NumberLiteral node
@@ -5965,30 +5965,30 @@ def makeInterpreter() {
 
 def zeroWrapper(f) {
     def wrapped(args) {
-        f();
+        return f();
     }
-    wrapped;
+    return wrapped;
 }
 
 def oneWrapper(f) {
     def wrapped(args) {
-        f(args[0]);
+        return f(args[0]);
     }
-    wrapped;
+    return wrapped;
 }
 
 def twoWrapper(f) {
     def wrapped(args) {
-        f(args[0],args[1]);
+        return f(args[0],args[1]);
     }
-    wrapped;
+    return wrapped;
 }
 
 def threeWrapper(f) {
     def wrapped(args) {
-        f(args[0],args[1],args[2]);
+        return f(args[0],args[1],args[2]);
     }
-    wrapped;
+    return wrapped;
 }
 
 def DefaultLibraryFunctionsInitializer(context) {
