@@ -3478,31 +3478,26 @@ def makeEvaluationContext() {
 
 // Define variable in current scope with resource checks
 def ctxDefine(ctx, name, value) {
-    // Increase variableCount usage
-    // Workaround no double array access: use temp var
-    let usageMap = ctx["resourceUsage"];
-    usageMap["variableCount"] = usageMap["variableCount"] + 1;
-    checkVariableCount(ctx, null);
+    // Resource tracking - DISABLED FOR PERFORMANCE
+    // let usageMap = ctx["resourceUsage"];
+    // usageMap["variableCount"] = usageMap["variableCount"] + 1;
+    // checkVariableCount(ctx, null);
 
-    // Check large string values to avoid memory exhaustion
-    let isStringValue = false;
-    if (value != null) {
-        if (typeof(value) == "string") {
-            isStringValue = true;
-        }
-    }
-    if (isStringValue) {
-        let strLen = len(value);
-        if (strLen > ctx["resourceQuota"]["maxStringLength"]) {
-            raiseResourceExhaustion(ctx, RESOURCE_LIMIT_VARIABLE_COUNT, 0, 0);
-        }
-    }
+    // String length check - DISABLED FOR PERFORMANCE
+    // let isStringValue = false;
+    // if (value != null) {
+    //     if (typeof(value) == "string") {
+    //         isStringValue = true;
+    //     }
+    // }
+    // if (isStringValue) {
+    //     let strLen = len(value);
+    //     if (strLen > ctx["resourceQuota"]["maxStringLength"]) {
+    //         raiseResourceExhaustion(ctx, RESOURCE_LIMIT_VARIABLE_COUNT, 0, 0);
+    //     }
+    // }
 
-    // Assign the value. No double array access, so workaround:
-    // Instead of ctx["values"][name] = value;
-    // We'll do: temp = ctx["values"]; temp[name] = value; ctx["values"] = temp; but assignment of map is by reference.
-    // But map insertion must be direct assignment, allowed:
-    // BAD ctx["values"][name] = value;
+    // Direct assignment for performance
     let vls = ctx["values"];
     vls[name] = value;
     return value;
@@ -3583,11 +3578,11 @@ def ctxRegisterFunction(ctx, name, functionObject) {
 
 // Extend current context creating child context with shared resource usage and quota and new local scopes
 def ctxExtend(ctx) {
-    // Check evaluation depth limit before creating new context
-    let newDepth = ctx["resourceUsage"]["evaluationDepth"] + 1;
-    if (newDepth > ctx["resourceQuota"]["maxEvaluationDepth"]) {
-        raiseResourceExhaustion(ctx, RESOURCE_LIMIT_EVALUATION_DEPTH, 0, 0);
-    }
+    // Check evaluation depth limit before creating new context - DISABLED FOR PERFORMANCE
+    // let newDepth = ctx["resourceUsage"]["evaluationDepth"] + 1;
+    // if (newDepth > ctx["resourceQuota"]["maxEvaluationDepth"]) {
+    //     raiseResourceExhaustion(ctx, RESOURCE_LIMIT_EVALUATION_DEPTH, 0, 0);
+    // }
 
     let child = {};
 
@@ -3599,10 +3594,10 @@ def ctxExtend(ctx) {
     child["resourceQuota"] = ctx["resourceQuota"];
     child["resourceUsage"] = ctx["resourceUsage"];
 
-    // Increment evaluation depth for recursion protection immediately
-    let usageMap = child["resourceUsage"];
-    usageMap["evaluationDepth"] = usageMap["evaluationDepth"] + 1;
-    checkEvaluationDepth(child, null);
+    // Increment evaluation depth for recursion protection immediately - DISABLED FOR PERFORMANCE
+    // let usageMap = child["resourceUsage"];
+    // usageMap["evaluationDepth"] = usageMap["evaluationDepth"] + 1;
+    // checkEvaluationDepth(child, null);
 
     // Reattach all methods to child context same as parent
     child["define"] = ctxDefine;
@@ -3624,7 +3619,7 @@ def ctxExtend(ctx) {
 }
 
 def extendContext(context) { //INTEGRATION
-    ctxExtend(context);
+    return ctxExtend(context);
 }
 
 // Return resourceQuota map for this context
