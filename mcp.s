@@ -398,13 +398,14 @@ def jsonToString(value) {
                         if (isMap(value)) {
                             return mapToJsonString(value);
                         } else {
-                            if (isBoolean(value)) {
-                                if (value) {
-                                    return "true";
-                                } else {
-                                    return "false";
-                                }
-                            }
+                           //if (isBoolean(value)) { // FIXME not supported
+                           //     if (value) {
+                           //         return "true";
+                           //     } else {
+                           //         return "false";
+                           //     }
+                           // }
+                           return "" + value;
                         }
                     }
                 }

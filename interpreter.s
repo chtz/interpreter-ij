@@ -1260,6 +1260,7 @@ def functionDeclarationToGo(self) {
 	//}))
     
     puts('ctx.Create("' + self["name"] + '", NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+    puts('result=NewNullValue()');
 
     let i = 0;
     while (i < len(self["parameters"])) {
@@ -5806,11 +5807,11 @@ def TypeLibraryFunctionsInitializer(context) {
     context["registerFunction"](context, "typeof", oneWrapper(typeof));
     context["registerFunction"](context, "isNumber", oneWrapper(isNumber));
     context["registerFunction"](context, "isString", oneWrapper(isString));
-    context["registerFunction"](context, "isBoolean", oneWrapper(isBoolean));
+    //context["registerFunction"](context, "isBoolean", oneWrapper(isBoolean)); // FIXME fake news
     context["registerFunction"](context, "isArray", oneWrapper(isArray));
     context["registerFunction"](context, "isMap", oneWrapper(isMap));
-    context["registerFunction"](context, "isFunction", oneWrapper(isFunction));
-    context["registerFunction"](context, "isNull", oneWrapper(isNull));
+    //context["registerFunction"](context, "isFunction", oneWrapper(isFunction)); // FIXME fake news
+    //context["registerFunction"](context, "isNull", oneWrapper(isNull)); // FIXME fake news
 }
 
 //TEST
