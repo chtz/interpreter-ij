@@ -21,8 +21,6 @@ def makeArrayLiteral(elements, position) {
 
 // Evaluates the array literal node to a runtime array of values
 def evaluateArrayLiteral(self, context) {
-    // trackEvaluationStep(context); // FIXME implemented later
-
     // Build new array for evaluated element values
     let values = [];
     let i = 0;
@@ -155,28 +153,9 @@ def Evaluator_applyPrefixOperator(operator, rightValue) { //INTEGRATION
     return applyPrefixOperator(operator, rightValue);
 }
 
-def checkStringLength(left, right, resourceQuota) { // FIXME implement later
-    /*
-    let leftLength = 0;
-    let rightLength = 0;
 
-    if (left != null) {
-        leftLength = len(left);
-    }
-    if (right != null) {
-        rightLength = len(right);
-    }
-    let maxLength = resourceQuota["getMaxStringLength"]();
 
-    if (leftLength + rightLength > maxLength) {
-        // throw ResourceExhaustionError(ResourceLimitType.VARIABLE_COUNT, 0, 0)
-        // Since throwing exceptions is not described in InterpreterJ, assume calling an error raise procedure:
-        resourceQuota["raiseResourceExhaustion"]("VARIABLE_COUNT", 0, 0);
-    }
-    */
-}
-
-def applyInfixOperator(left, operator, right, resourceQuota) {
+def applyInfixOperator(left, operator, right) {
     // Check numeric operations first (most common)
     if (typeof(left) == "number" && typeof(right) == "number") {
         let leftVal = left;
@@ -241,8 +220,6 @@ def applyInfixOperator(left, operator, right, resourceQuota) {
             let rightStr = "";
             if (left == null) { leftStr = "null"; } else { leftStr = stringValue(left); }
             if (right == null) { rightStr = "null"; } else { rightStr = stringValue(right); }
-
-            checkStringLength(leftStr, rightStr, resourceQuota);
             
             return leftStr + rightStr;
         }
@@ -368,22 +345,7 @@ def leftEquals(left, right) {
     return false;
 }
 
-// ---- Setup for resource quota ----
 
-// Named functions
-def getMaxStringLength() {
-    return 1000;
-}
-
-def raiseResourceExhaustion(reason, a, b) {
-    puts("ResourceExhausted: " + reason);
-}
-
-// Dummy resource quota map
-let dummyQuota = {
-    "getMaxStringLength": getMaxStringLength,
-    "raiseResourceExhaustion": raiseResourceExhaustion
-};
 
 
 
@@ -397,7 +359,7 @@ def makeIndexExpression(collectionNode, indexNode, position) {
     }
 
     def evaluate(self,context) {
-        // Optionally: If you need tracking, call trackEvaluationStep(context)
+    
         // Evaluate collection
         let collectionObject = node["collection"]["evaluate"](node["collection"], context)
         // Evaluate index
@@ -650,8 +612,7 @@ def ReturnStatement_toGo(self) {
       
       // Loop
       while (EvaluatorIsTruthy(conditionEval(condition, context))) {
-        // Track each iteration - disabled for performance
-        //context["trackLoopIteration"](node["position"]); // FIXME implemented later
+
         result = bodyEval(body, context);
         // If result is a ReturnValue, stop loop and propagate
         if (isReturnValue(result)) {
@@ -858,7 +819,7 @@ def evaluateInfixExpression(self, context) {
     let rightValue = right["evaluate"](right, context);
     
     // Apply operator and return
-    return applyInfixOperator(leftValue, self["operator"], rightValue, context["getResourceQuota"](context));
+    return applyInfixOperator(leftValue, self["operator"], rightValue);
 }
 
 // Export to JSON string (no newlines or escapes in string literals)
@@ -1089,10 +1050,6 @@ def blockStatementAddStatement(self, statement) {
 
 // Evaluation logic
 def blockStatementEvaluate(self, context) {
-    // trackEvaluationStep(context);
-    //if (context["trackEvaluationStep"] != null) { // FIXME implemented later
-    //    context["trackEvaluationStep"](context);
-    //}
     // block scope
     let blockContext = null;
     if (context["extend"] != null) {
@@ -1206,8 +1163,6 @@ def makeFunctionDeclaration(name, parameters, body, position) {
 
 // Evaluate function for the FunctionDeclaration node
 def evaluateFunctionDeclaration(node, context) { // FIXME really?
-    //trackEvaluationStep(context); // FIXME implemented later
-
     // Create the function definition as a map
     def functionValue(args) {
         // Create a new context extended from the parent
@@ -1398,10 +1353,8 @@ def getStringLiteralValue(thisNode) {
     return thisNode["value"];
 }
 
-// Evaluate the node (returns the literal value; assumes trackEvaluationStep is defined elsewhere)
+// Evaluate the node (returns the literal value)
 def evaluateStringLiteral(thisNode, context) {
-    // Track this evaluation step (function must exist elsewhere)
-    //trackEvaluationStep(context); // FIXME implemented later
     return thisNode["value"];
 }
 
@@ -2445,12 +2398,9 @@ def CallExpression_create(callee, arguments, position) {
 def CallExpression_evaluate(self, context) {
     // Self = this CallExpression node instance (map)
 
-    // trackEvaluationStep(context); // FIXME implemented later
 
-    // context.trackEvaluationDepth(position) - DISABLED FOR PERFORMANCE
-    // context["trackEvaluationDepth"](context, self["position"]);
 
-    // Use try-finally pattern to ensure exitEvaluationDepth is called
+    // Use try-finally pattern
     let result = null;
     let errorCaught = false;
     let errorObj = null;
@@ -2533,8 +2483,7 @@ def CallExpression_evaluate(self, context) {
         }
     }
 
-    // Finally: always call context.exitEvaluationDepth() - DISABLED FOR PERFORMANCE
-    // context["exitEvaluationDepth"](context);
+
 
     // Rethrow error if there was one
     if (errorCaught) {
@@ -2685,9 +2634,6 @@ def makeIfStatement(condition, consequence, alternative, position) {
 
 // Evaluate the IfStatement: procedural, explicit, no OO
 def ifStatementEvaluate(self, context) {
-    // Track this evaluation step
-    //trackEvaluationStep(context); // FIXME implemented later
-
     let conditionResult = self["condition"]["evaluate"](self["condition"], context);
 
     if (EvaluatorIsTruthy(conditionResult)) {
@@ -3156,9 +3102,6 @@ def makePrefixExpression(operator, right, position) {
 // ---------- Evaluate Function ----------
 def PrefixExpression_evaluate(self, context) {
     // "self" is the PrefixExpression node/map
-    // Example of step tracking (replace with actual function if needed)
-    //trackEvaluationStep(context); // FIXME implemented later
-
     let rightNode = self["right"];
     let rightValue = null;
     if (rightNode != null) {
@@ -3322,32 +3265,7 @@ def getTokenLiteral(tokenType) {
 // InterpreterJ port of EvaluationContext Java class
 // Procedural style, manual explicit map access only, no classes, no dot notation.
 
-// ResourceLimitType constants
-let RESOURCE_LIMIT_EVALUATION_DEPTH = "EVALUATION_DEPTH";
-let RESOURCE_LIMIT_LOOP_ITERATIONS = "LOOP_ITERATIONS";
-let RESOURCE_LIMIT_VARIABLE_COUNT = "VARIABLE_COUNT";
-let RESOURCE_LIMIT_EVALUATION_STEPS = "EVALUATION_STEPS";
 
-// Factory to create ResourceQuota map with default values
-def makeDefaultResourceQuota() {
-    let rq = {};
-    rq["maxEvaluationDepth"] =  65535000;
-    rq["maxLoopIterations"] =   65535000;
-    rq["maxVariableCount"] =    65535000;
-    rq["maxEvaluationSteps"] =  65535000;
-    rq["maxStringLength"] =     65535000;
-    return rq;
-}
-
-// Factory to create ResourceUsage map initialized to zero counts
-def makeResourceUsage() {
-    let ru = {};
-    ru["evaluationDepth"] = 0;
-    ru["loopIterations"] = 0;
-    ru["variableCount"] = 0;
-    ru["evaluationSteps"] = 0;
-    return ru;
-}
 
 // RuntimeError generator - prints message and aborts execution via assert(false)
 def raiseRuntimeError(message, line, column) {
@@ -3356,11 +3274,7 @@ def raiseRuntimeError(message, line, column) {
     assert(false, fullMessage);
 }
 
-// Raise ResourceExhaustion error with reason and position info
-def raiseResourceExhaustion(ctx, reason, line, column) {
-    let msg = "Resource exhaustion: " + reason; // FIXME implemented later
-    raiseRuntimeError(msg, line, column);
-}
+
 
 // Helper to get line and column number from position map or default 0,0
 def getLineCol(position) { // FIXME position mess (map vs. string)
@@ -3388,31 +3302,7 @@ def getLineCol(position) { // FIXME position mess (map vs. string)
     return [line, col];
 }
 
-// Check functions to verify resource limits; throw ResourceExhaustionError if exceeded
-def checkEvaluationDepth(ctx, position) {
-    if (ctx["resourceUsage"]["evaluationDepth"] > ctx["resourceQuota"]["maxEvaluationDepth"]) {
-        let arr = getLineCol(position);
-        raiseResourceExhaustion(ctx, RESOURCE_LIMIT_EVALUATION_DEPTH, arr[0], arr[1]);
-    }
-}
-def checkLoopIterations(ctx, position) {
-    if (ctx["resourceUsage"]["loopIterations"] > ctx["resourceQuota"]["maxLoopIterations"]) {
-        let arr = getLineCol(position);
-        raiseResourceExhaustion(ctx, RESOURCE_LIMIT_LOOP_ITERATIONS, arr[0], arr[1]);
-    }
-}
-def checkVariableCount(ctx, position) {
-    if (ctx["resourceUsage"]["variableCount"] > ctx["resourceQuota"]["maxVariableCount"]) {
-        let arr = getLineCol(position);
-        raiseResourceExhaustion(ctx, RESOURCE_LIMIT_VARIABLE_COUNT, arr[0], arr[1]);
-    }
-}
-def checkEvaluationSteps(ctx, position) {
-    if (ctx["resourceUsage"]["evaluationSteps"] > ctx["resourceQuota"]["maxEvaluationSteps"]) {
-        let arr = getLineCol(position);
-        //FIXME raiseResourceExhaustion(ctx, RESOURCE_LIMIT_EVALUATION_STEPS, arr[0], arr[1]);
-    }
-}
+
 
 // Helper function to check if map has key (no 'in' operator, no direct containsKey)
 def mapHasKey(mapObj, key) {
@@ -3438,60 +3328,26 @@ def makeEvaluationContext() {
     ctx["values"] = {};
     ctx["functions"] = {};
 
-    ctx["resourceQuota"] = makeDefaultResourceQuota();
-    ctx["resourceUsage"] = makeResourceUsage();
-
     // Attach methods explicitly
     ctx["define"] = ctxDefine;
     ctx["get"] = ctxGet;
     ctx["assign"] = ctxAssign;
     ctx["registerFunction"] = ctxRegisterFunction;
     ctx["extend"] = ctxExtend;
-    ctx["getResourceQuota"] = ctxGetResourceQuota;
-    ctx["getResourceUsage"] = ctxGetResourceUsage;
-    ctx["getEvaluationDepth"] = ctxGetEvaluationDepth;
-    ctx["trackLoopIteration"] = ctxTrackLoopIteration;
-    ctx["trackEvaluationStep"] = ctxTrackEvaluationStep;
-    ctx["trackEvaluationDepth"] = ctxTrackEvaluationDepth;
-    ctx["exitEvaluationDepth"] = ctxExitEvaluationDepth;
 
     return ctx;
 }
 
-// Define variable in current scope with resource checks
+// Define variable in current scope
 def ctxDefine(ctx, name, value) {
-    // Resource tracking - DISABLED FOR PERFORMANCE
-    // let usageMap = ctx["resourceUsage"];
-    // usageMap["variableCount"] = usageMap["variableCount"] + 1;
-    // checkVariableCount(ctx, null);
-
-    // String length check - DISABLED FOR PERFORMANCE
-    // let isStringValue = false;
-    // if (value != null) {
-    //     if (typeof(value) == "string") {
-    //         isStringValue = true;
-    //     }
-    // }
-    // if (isStringValue) {
-    //     let strLen = len(value);
-    //     if (strLen > ctx["resourceQuota"]["maxStringLength"]) {
-    //         raiseResourceExhaustion(ctx, RESOURCE_LIMIT_VARIABLE_COUNT, 0, 0);
-    //     }
-    // }
-
-    // Direct assignment for performance
+    // Direct assignment
     let vls = ctx["values"];
     vls[name] = value;
     return value;
 }
 
-// Get variable or function from current or parent scopes, with resource tracking and errors on not found
+// Get variable or function from current or parent scopes, with errors on not found
 def ctxGet(ctx, name, position) {
-    // Increment evaluation steps usage - DISABLED FOR PERFORMANCE
-    // let usageMap = ctx["resourceUsage"];
-    // usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    // checkEvaluationSteps(ctx, position);
-
     // Direct lookup is faster than mapHasKey for the common case
     let val = ctx["values"][name];
     if (val != null) {
@@ -3525,13 +3381,8 @@ def ctxGet(ctx, name, position) {
     return null; // unreachable
 }
 
-// Assign a value to a variable in current or parent scopes, with checks and errors on undefined
+// Assign a value to a variable in current or parent scopes, with errors on undefined
 def ctxAssign(ctx, name, value, position) {
-    // Increment evaluation steps usage - DISABLED FOR PERFORMANCE
-    // let usageMap = ctx["resourceUsage"];
-    // usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    // checkEvaluationSteps(ctx, position);
-
     // Try direct assignment first for performance
     let vls = ctx["values"];
     if (vls[name] != null || mapHasKey(vls, name)) {
@@ -3558,42 +3409,20 @@ def ctxRegisterFunction(ctx, name, functionObject) {
     return functionObject;
 }
 
-// Extend current context creating child context with shared resource usage and quota and new local scopes
+// Extend current context creating child context with new local scopes
 def ctxExtend(ctx) {
-    // Check evaluation depth limit before creating new context - DISABLED FOR PERFORMANCE
-    // let newDepth = ctx["resourceUsage"]["evaluationDepth"] + 1;
-    // if (newDepth > ctx["resourceQuota"]["maxEvaluationDepth"]) {
-    //     raiseResourceExhaustion(ctx, RESOURCE_LIMIT_EVALUATION_DEPTH, 0, 0);
-    // }
-
     let child = {};
 
     child["parent"] = ctx;
     child["values"] = {};
     child["functions"] = {};
 
-    // Share resource quota and usage (same references)
-    child["resourceQuota"] = ctx["resourceQuota"];
-    child["resourceUsage"] = ctx["resourceUsage"];
-
-    // Increment evaluation depth for recursion protection immediately - DISABLED FOR PERFORMANCE
-    // let usageMap = child["resourceUsage"];
-    // usageMap["evaluationDepth"] = usageMap["evaluationDepth"] + 1;
-    // checkEvaluationDepth(child, null);
-
-    // Reattach all methods to child context same as parent
+    // Attach all methods to child context same as parent
     child["define"] = ctxDefine;
     child["get"] = ctxGet;
     child["assign"] = ctxAssign;
     child["registerFunction"] = ctxRegisterFunction;
     child["extend"] = ctxExtend;
-    child["getResourceQuota"] = ctxGetResourceQuota;
-    child["getResourceUsage"] = ctxGetResourceUsage;
-    child["getEvaluationDepth"] = ctxGetEvaluationDepth;
-    child["trackLoopIteration"] = ctxTrackLoopIteration;
-    child["trackEvaluationStep"] = ctxTrackEvaluationStep;
-    child["trackEvaluationDepth"] = ctxTrackEvaluationDepth;
-    child["exitEvaluationDepth"] = ctxExitEvaluationDepth;
 
     return child;
 }
@@ -3602,53 +3431,7 @@ def extendContext(context) { //INTEGRATION
     return ctxExtend(context);
 }
 
-// Return resourceQuota map for this context
-def ctxGetResourceQuota(ctx) { // FIXME implemented later
-    return 0; //ctx["resourceQuota"];
-}
 
-// Return resourceUsage map for this context
-def ctxGetResourceUsage(ctx) { // FIXME implemented later
-    return 0; //ctx["resourceUsage"];
-}
-
-// Return current evaluationDepth count from resourceUsage
-def ctxGetEvaluationDepth(ctx) { // FIXME implemented later
-    return 0; //ctx["resourceUsage"]["evaluationDepth"];
-}
-
-// Track and check loop iteration increments: increments loopIterations and evaluationSteps
-def ctxTrackLoopIteration(ctx, position) { // FIXME implemented later
-    //let usageMap = ctx["resourceUsage"];
-    //usageMap["loopIterations"] = usageMap["loopIterations"] + 1;
-    //checkLoopIterations(ctx, position);
-
-    //usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    //checkEvaluationSteps(ctx, position);
-}
-
-// Track evaluation step increments
-def ctxTrackEvaluationStep(ctx, position) { // FIXME implemented later
-    //let usageMap = ctx["resourceUsage"];
-    //usageMap["evaluationSteps"] = usageMap["evaluationSteps"] + 1;
-    //checkEvaluationSteps(ctx, position);
-}
-
-// Track evaluation depth increments, with check
-def ctxTrackEvaluationDepth(ctx, position) { // FIXME implemented later
-    //let usageMap = ctx["resourceUsage"];
-    //usageMap["evaluationDepth"] = usageMap["evaluationDepth"] + 1;
-    //checkEvaluationDepth(ctx, position);
-}
-
-// Exit/decrement evaluation depth, disallow negative counts
-def ctxExitEvaluationDepth(ctx) { // FIXME implemented later
-    //let usageMap = ctx["resourceUsage"];
-    //usageMap["evaluationDepth"] = usageMap["evaluationDepth"] - 1;
-    //if (usageMap["evaluationDepth"] < 0) {
-    //    usageMap["evaluationDepth"] = 0;
-    //}
-}
 
 // -- TEST --
 
@@ -3674,9 +3457,6 @@ def makeIndexAssignmentStatement(collection, index, value, position) {
 
 // Evaluate (executes assignment) for IndexAssignmentStatement node
 def indexAssignmentStatement_evaluate(self, context) {
-    // Optional: track evaluation step for resource limiting
-    //trackEvaluationStep(context); // FIXME implemented later
-
     let collectionObject = self["collection"]["evaluate"](self["collection"], context);
     let indexValue = self["index"]["evaluate"](self["index"], context);
     let valueToAssign = self["value"]["evaluate"](self["value"], context);
@@ -3780,9 +3560,6 @@ def makeMapLiteral(pairs, position) {
 
   // Attach evaluate function
   def evaluate(self,context) {
-    // Track evaluation step to avoid CPU runaway
-    //trackEvaluationStep(context); // FIXME implemented later
-
     // mapValues will be built as a map with string/number keys only
     let mapValues = {};
 
@@ -3944,11 +3721,8 @@ def makeProgram() {
     }
     program["getStatements"] = getStatements;
 
-    // context must be a map holding runtime state, and trackEvaluationStep must be passed in or globally accessible
+    // context must be a map holding runtime state
     def evaluate(self, context) {
-        // Track this evaluation step to prevent CPU exhaustion
-        //trackEvaluationStep(context, {}); // FIXME position? // FIXME implemented later
-
         let result = null;
         let stmts = program["statements"];
         let n = len(stmts);
@@ -5756,16 +5530,13 @@ puts("}");
 
 // Interpreter.s - InterpreterJ port of the Interpreter Java class
 
-//def trackEvaluationStep(context, position) { // FIXME implemented later
-//    context["trackEvaluationStep"](context["trackEvaluationStep"], position);
-//}
+
 
 // Interpreter map holding state and library initializers
 def makeInterpreter() {
     let interpreter = {};
     interpreter["ast"] = null;
     interpreter["libraryFunctionInitializers"] = [];
-    interpreter["resourceQuota"] = makeDefaultResourceQuota();
 
     // Constructor with all default library function initializers
     def initWithDefaultLibraries(self) {
@@ -5778,16 +5549,10 @@ def makeInterpreter() {
             RegexLibraryFunctionsInitializer,
             TypeLibraryFunctionsInitializer
         ];
-        self["resourceQuota"] = makeDefaultResourceQuota();
     }
 
-    // Init with ResourceQuota and library initializers
-    def initWithQuotaAndLibraries(self, resourceQuota, initializers) {
-        if (resourceQuota != null) {
-            self["resourceQuota"] = resourceQuota;
-        } else {
-            self["resourceQuota"] = makeDefaultResourceQuota();
-        }
+    // Init with library initializers
+    def initWithLibraries(self, initializers) {
         if (initializers != null) {
             self["libraryFunctionInitializers"] = initializers;
         } else {
@@ -5876,14 +5641,8 @@ def makeInterpreter() {
             return evalResultMap;
         }
 
-        // Step 1: Prepare context with resource quota
+        // Step 1: Prepare context
         let context = makeEvaluationContext();
-
-        context["resourceQuota"] = self["resourceQuota"];
-
-        // Prepare fresh resource usage map (to avoid keeping old usage accidentally)
-        let usageMap = makeResourceUsage();
-        context["resourceUsage"] = usageMap;
 
         // Step 2: Register built-in functions
         self["registerBuiltInFunctions"](self, context);
@@ -5946,15 +5705,7 @@ def makeInterpreter() {
         return result;
     }
 
-    // Get resource quota map
-    def getResourceQuota(self) {
-        return self["resourceQuota"];
-    }
 
-    // Set resource quota map
-    def setResourceQuota(self, resourceQuota) {
-        self["resourceQuota"] = resourceQuota;
-    }
 
     // Initialize interpreter with default library initializers on creation
     initWithDefaultLibraries(interpreter);
