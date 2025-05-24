@@ -29,6 +29,21 @@ def eval(source) {
     }
 }
 
+def ast(source) {
+    result = "";
+    let parseResult = interpreter["parse"](interpreter, source);
+    if (!(parseResult["success"])) {
+        return "Parse failed with errors: " + parseResult["errors"]; //FIXME BACKPORT
+    } else {
+        let astJson = interpreter["getAstJson"](interpreter);
+        if (astJson != null) {
+            return astJson;
+        } else {
+            return "No AST to show.";
+        }
+    }
+}
+
 /*
 let srcs = [
     "puts('hi');",

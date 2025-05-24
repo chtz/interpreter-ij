@@ -343,13 +343,6 @@ while (line != null) {
           "capabilities": {
             "tools": {
               "listChanged": true
-            },
-            "resources": {
-              "subscribe": false,
-              "listChanged": false
-            },
-            "prompts": {
-              "listChanged": false
             }
           },
           "serverInfo": {
@@ -374,20 +367,48 @@ while (line != null) {
                   }
                 }
               }
+            },
+            {
+              "name": "parse_script",
+              "description": "Parses a script in the IJ language and returns AST as JSON.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "script": {
+                    "type": "string",
+                    "description": "The IJ script to execute."
+                  }
+                }
+              }
             }
           ]
         }));
     }
 
     if (method == "tools/call") {
-        puts(result(p["id"],{
-          "content": [
-            {
-              "type": "text",
-              "text": eval(p["params"]["arguments"]["script"])
-            }
-          ]
-        }));
+        let name = p["params"]["name"];
+        
+        if (name == "execute_script") {
+            puts(result(p["id"],{
+            "content": [
+                {
+                "type": "text",
+                "text": eval(p["params"]["arguments"]["script"])
+                }
+            ]
+            }));
+        }
+
+        if (name == "parse_script") {
+            puts(result(p["id"],{
+            "content": [
+                {
+                "type": "text",
+                "text": ast(p["params"]["arguments"]["script"])
+                }
+            ]
+            }));
+        }
     }
 
     line = gets();
