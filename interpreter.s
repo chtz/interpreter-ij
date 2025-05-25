@@ -3382,7 +3382,7 @@ def getTokenLiteral(tokenType) {
 // RuntimeError generator - prints message and aborts execution via assert(false)
 def raiseRuntimeError(message, line, column) {
     let fullMessage = "RuntimeError: " + message + " at " + line + ":" + column;
-    puts(fullMessage);
+    //puts(fullMessage);
     assert(false, fullMessage);
 }
 

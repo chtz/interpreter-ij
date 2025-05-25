@@ -357,13 +357,17 @@ while (line != null) {
           "tools": [
             {
               "name": "execute_script",
-              "description": "Executes a script in the IJ language.",
+              "description": "Executes a script in the IJ language (see EBNF and samples here: https://raw.githubusercontent.com/chtz/interpreter-ij/refs/heads/main/README.md).",
               "inputSchema": {
                 "type": "object",
                 "properties": {
                   "script": {
                     "type": "string",
                     "description": "The IJ script to execute."
+                  },
+                  "input": {
+                    "type": "string",
+                    "description": "The (optional) input to be processed by the script."
                   }
                 }
               }
@@ -389,11 +393,21 @@ while (line != null) {
         let name = p["params"]["name"];
         
         if (name == "execute_script") {
+            if (p["params"]["arguments"]["input"] != null) {
+                input["initialize"](p["params"]["arguments"]["input"]);
+            }
+            else {
+                input["clear"]();
+            }
+
+            clearOutput();
+            clearAssertOutput();
+
             puts(result(p["id"],{
             "content": [
                 {
                 "type": "text",
-                "text": eval(p["params"]["arguments"]["script"])
+                "text": eval(p["params"]["arguments"]["script"] + chr(10))
                 }
             ]
             }));

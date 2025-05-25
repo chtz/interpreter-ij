@@ -4,3 +4,8 @@ interpreter_base.s
 mcp_eval.s
 app
 app.go
+inputmock.s
+sample2.json
+sort.s
+sort
+mcp-in.json
