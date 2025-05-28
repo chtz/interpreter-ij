@@ -352,6 +352,18 @@ while (line != null) {
         }));
     }
 
+    if (method == "resources/list") {
+        puts(result(p["id"],{
+          "resources": []
+        }));
+    }
+
+    if (method == "prompts/list") {
+        puts(result(p["id"],{
+          "prompts": []
+        }));
+    }
+
     if (method == "tools/list") {
         puts(result(p["id"],{
           "tools": [
