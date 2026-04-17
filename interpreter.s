@@ -747,13 +747,41 @@ def assignmentStatementToJson(self) {
 def assignmentStatementToGo(self) {
     // Go: ctx.Update("i", IntValue{val: i})
 
+    // Static resolution: params (C3), function-local lets (C4) and
+    // library/top-level globals (C6/C7) assign to the underlying Go variable
+    // directly; other cases fall through to the ctx path.
+    let origin = self["resolvedOrigin"];
+    let kind = self["resolvedKind"];
+    let useGoVar = false;
+    let isGlobal = false;
+    if (origin == "param") { useGoVar = true; }
+    if (origin == "let") {
+        if (kind == "local" || kind == "captured") { useGoVar = true; }
+    }
+    if (kind == "global") {
+        if (origin == "lib" || origin == "def" || origin == "let") {
+            useGoVar = true;
+            isGlobal = true;
+        }
+    }
+    if (useGoVar) {
+        print(self["resolvedName"] + ' = ');
+        if (self["value"]["toGo"] != null) {
+            self["value"]["toGo"](self["value"])
+        }
+        // Mirror globals back to ctx so dynamic access (ctx.Get from
+        // unresolved paths) stays coherent.
+        if (isGlobal) {
+            print('; ctx.Update("' + self["name"] + '", ' + self["resolvedName"] + ')');
+        }
+        return null;
+    }
     print('ctx.Update("'+self["name"]+'", ');
-
     if (self["value"]["toGo"] != null) {
         self["value"]["toGo"](self["value"])
     }
-
     print(')');
+    return null;
 }
 
 // assignmentStatementEvaluate function: calls value's evaluate and assigns to context
@@ -1166,12 +1194,14 @@ def blockStatementToGo(self) {
     let stmts = self["statements"];
     let n = len(stmts);
 
-    // Skip NewContext when this block has no let/def declarations; no new scope needed.
+    // Skip NewContext when this block has no declarations that still rely on
+    // ctx. After C4, `let` is emitted as a Go var and no longer needs ctx at
+    // all, so only nested `def` declarations (which still use ctx.Create) keep
+    // the block-local NewContext.
     let hasLocal = false;
     let j = 0;
     while (j < n) {
         let t = stmts[j]["type"];
-        if (t == "VariableDeclaration") { hasLocal = true; }
         if (t == "FunctionDeclaration") { hasLocal = true; }
         j = j + 1;
     }
@@ -1189,18 +1219,42 @@ def blockStatementToGo(self) {
     let i = 0;
     while (i < n) {
         let stmt = stmts[i];
-        
-        if (i == n-1 && stmt["type"] != "ReturnStatement") { // keep track of last result in case of missing return statement in function
-            if (stmt["type"] == "AssignmentStatement" || stmt["type"] == "IndexAssignmentStatement" || stmt["type"] == "ExpressionStatement") {
-                print('result=');
+
+        // Keep track of last result in case of missing return statement in
+        // function. `result=<expr>` only works when <expr> is a Go expression;
+        // statically-resolved param/let assignments emit Go statements of the
+        // form `ij_x = value`, so that case needs two emitted lines.
+        let isLast = (i == n-1);
+        let isGoVarAssign = false;
+        if (stmt["type"] == "AssignmentStatement") {
+            let so = stmt["resolvedOrigin"];
+            let sk = stmt["resolvedKind"];
+            if (so == "param") { isGoVarAssign = true; }
+            if (so == "let") {
+                if (sk == "local" || sk == "captured") { isGoVarAssign = true; }
             }
+            if (sk == "global") {
+                if (so == "lib" || so == "def" || so == "let") { isGoVarAssign = true; }
+            }
+        }
+
+        if (isLast && stmt["type"] != "ReturnStatement") {
+            if (stmt["type"] == "AssignmentStatement") {
+                if (!isGoVarAssign) { print('result='); }
+            }
+            if (stmt["type"] == "IndexAssignmentStatement") { print('result='); }
+            if (stmt["type"] == "ExpressionStatement") { print('result='); }
         }
 
         if (stmt["toGo"] != null) {
             stmt["toGo"](stmt);
             puts("");
         }
-        
+
+        if (isLast && isGoVarAssign) {
+            puts('result=' + stmt["resolvedName"]);
+        }
+
         i = i + 1;
     }
 
@@ -1325,6 +1379,349 @@ def intString(i) { // HACK to compensate Java-based Interpreter error :-)
     return i;
 }
 
+// Mangle an IJ identifier into a safe Go identifier (prefix "ij_").
+// The IJ parser already restricts identifiers to [A-Za-z_][A-Za-z0-9_]*,
+// so a simple prefix suffices and avoids collisions with Go builtins/keywords.
+def mangle(name) {
+    return "ij_" + name;
+}
+
+// ============================================================================
+// Resolver pass: annotates the AST with scope/resolution info before toGo.
+//
+// For every Identifier / VariableDeclaration / AssignmentStatement /
+// FunctionDeclaration node, adds:
+//   node["resolvedKind"] = "local" | "captured" | "global"
+//   node["resolvedName"] = mangle(node["name"])   (unused for "global")
+//
+// For every BlockStatement / FunctionDeclaration, adds:
+//   node["resolvedLocals"] = [names of `let` and `def` declared in this scope]
+//
+// "local"    -> declared in the same function as the reference.
+// "captured" -> declared in an enclosing function (Go closure capture will
+//               make it work automatically).
+// "global"   -> declared at the top-level (root) scope, OR not declared
+//               anywhere that the resolver could see (fall back to ctx).
+//
+// The resolver uses hoisting semantics: all `let` and `def` in a block are
+// visible throughout that block, matching IJ's runtime behaviour where
+// mutual recursion at the same scope works regardless of textual order.
+// ============================================================================
+
+let resolverScopeIdCounter = 0;
+
+def makeResolverScope(parent, isFunctionScope) {
+    let s = {};
+    s["parent"] = parent;
+    s["isFunctionScope"] = isFunctionScope;
+    s["locals"] = {};
+    resolverScopeIdCounter = resolverScopeIdCounter + 1;
+    s["id"] = resolverScopeIdCounter;
+    return s;
+}
+
+// origin is one of: "param" | "let" | "def" | "lib"
+def resolverScopeDeclare(scope, name, origin) {
+    let localsMap = scope["locals"];
+    localsMap[name] = origin;
+}
+
+// Names of built-in library functions registered by registerLibraryFunctions().
+// Keep in sync with the emissions in goLibPrefix.
+def libraryFunctionNames() {
+    return [
+        "puts", "gets", "assert", "push", "pop", "join", "keys", "values",
+        "char", "len", "chr", "ord", "substr", "int", "string", "random",
+        "typeof", "isArray", "isMap", "isNumber", "isString", "double",
+        "echo", "print", "delete", "startsWith", "endsWith", "trim",
+        "match", "findAll", "replace", "split"
+    ];
+}
+
+def resolverScopeLookup(scope, name) {
+    let s = scope;
+    let crossedFunction = false;
+    while (s != null) {
+        let sLocals = s["locals"];
+        let originHere = sLocals[name];
+        if (originHere != null) {
+            let r = {};
+            r["origin"] = originHere;
+            if (s["parent"] == null) {
+                r["kind"] = "global";
+            } else {
+                if (crossedFunction) {
+                    r["kind"] = "captured";
+                } else {
+                    r["kind"] = "local";
+                }
+            }
+            return r;
+        }
+        if (s["isFunctionScope"]) {
+            crossedFunction = true;
+        }
+        s = s["parent"];
+    }
+    let r = {};
+    r["kind"] = "global";
+    r["origin"] = null;
+    return r;
+}
+
+def resolveNode(node, scope) {
+    if (node == null) { return null; }
+    if (!isMap(node)) { return null; }
+    let t = node["type"];
+    if (t == null) { return null; }
+
+    if (t == "BlockStatement") { resolveBlockStatement(node, scope); return null; }
+    if (t == "FunctionDeclaration") { resolveFunctionDeclaration(node, scope); return null; }
+    if (t == "VariableDeclaration") { resolveVariableDeclaration(node, scope); return null; }
+    if (t == "AssignmentStatement") { resolveAssignmentStatement(node, scope); return null; }
+    if (t == "Identifier") { resolveIdentifier(node, scope); return null; }
+
+    resolveGeneric(node, scope);
+    return null;
+}
+
+def resolveBlockStatement(node, parentScope) {
+    let s = makeResolverScope(parentScope, false);
+    node["resolvedScope"] = s;
+    let locals = [];
+    node["resolvedLocals"] = locals;
+
+    let stmts = node["statements"];
+    if (stmts == null) { return null; }
+    let n = len(stmts);
+
+    // Sequential resolution: declarations become visible AFTER their
+    // statement has been processed, so `let x = f(x)` resolves the RHS `x`
+    // against the enclosing scope (matching IJ runtime semantics where
+    // shadowing `let i = "" + i` is a common idiom).
+    let i = 0;
+    while (i < n) {
+        let stmt = stmts[i];
+        if (stmt != null) {
+            resolveNode(stmt, s);
+            let st = stmt["type"];
+            if (st == "VariableDeclaration") {
+                resolverScopeDeclare(s, stmt["name"], "let");
+                push(locals, stmt["name"]);
+            }
+            if (st == "FunctionDeclaration") {
+                resolverScopeDeclare(s, stmt["name"], "def");
+                push(locals, stmt["name"]);
+            }
+        }
+        i = i + 1;
+    }
+    return null;
+}
+
+def resolveFunctionDeclaration(node, parentScope) {
+    let info = resolverScopeLookup(parentScope, node["name"]);
+    node["resolvedKind"] = info["kind"];
+    node["resolvedOrigin"] = info["origin"];
+    node["resolvedName"] = mangle(node["name"]);
+    // A `def` is at root only when its enclosing scope is the program root.
+    // A nested `def` that happens to share a name with a top-level `def`
+    // (e.g. mcp.s `def skipWhitespace(s,index)` inside `def mcp()` vs the
+    // top-level lexer `def skipWhitespace(lexer)`) must NOT be emitted as a
+    // package-level ij_<name> assignment or it would clobber the outer one
+    // at runtime. Use resolvedAtRoot instead of resolvedKind/resolvedOrigin
+    // to gate the C6 root-def emission.
+    node["resolvedAtRoot"] = (parentScope["parent"] == null);
+
+    let fnScope = makeResolverScope(parentScope, true);
+    node["resolvedScope"] = fnScope;
+
+    let params = node["parameters"];
+    if (params != null) {
+        let paramLocals = [];
+        let pn = len(params);
+        let i = 0;
+        while (i < pn) {
+            resolverScopeDeclare(fnScope, params[i], "param");
+            push(paramLocals, params[i]);
+            i = i + 1;
+        }
+        node["resolvedParamLocals"] = paramLocals;
+    }
+
+    resolveNode(node["body"], fnScope);
+    return null;
+}
+
+def resolveVariableDeclaration(node, scope) {
+    let info = resolverScopeLookup(scope, node["name"]);
+    node["resolvedKind"] = info["kind"];
+    node["resolvedOrigin"] = info["origin"];
+    node["resolvedName"] = mangle(node["name"]);
+    // The enclosing scope matters for emission: root-scope lets stay dynamic
+    // (ctx.Create) until a later phase, function-local lets become Go vars.
+    node["resolvedAtRoot"] = (scope["parent"] == null);
+
+    if (node["initializer"] != null) {
+        resolveNode(node["initializer"], scope);
+    }
+    return null;
+}
+
+def resolveAssignmentStatement(node, scope) {
+    let info = resolverScopeLookup(scope, node["name"]);
+    node["resolvedKind"] = info["kind"];
+    node["resolvedOrigin"] = info["origin"];
+    node["resolvedName"] = mangle(node["name"]);
+
+    if (node["value"] != null) {
+        resolveNode(node["value"], scope);
+    }
+    return null;
+}
+
+def resolveIdentifier(node, scope) {
+    let info = resolverScopeLookup(scope, node["name"]);
+    node["resolvedKind"] = info["kind"];
+    node["resolvedOrigin"] = info["origin"];
+    node["resolvedName"] = mangle(node["name"]);
+    return null;
+}
+
+def resolveGeneric(node, scope) {
+    // Walk known scalar AST child fields.
+    let scalarKeys = ["condition","consequence","alternative","body","left","right","collection","index","value","callee","expression","initializer"];
+    let i = 0;
+    while (i < len(scalarKeys)) {
+        let k = scalarKeys[i];
+        let child = node[k];
+        if (child != null) {
+            if (isMap(child)) {
+                resolveNode(child, scope);
+            }
+        }
+        i = i + 1;
+    }
+    // Walk known array-valued AST child fields.
+    let arrKeys = ["statements","elements","arguments"];
+    let j = 0;
+    while (j < len(arrKeys)) {
+        let k = arrKeys[j];
+        let arr = node[k];
+        if (arr != null) {
+            if (isArray(arr)) {
+                let m = 0;
+                while (m < len(arr)) {
+                    if (arr[m] != null) {
+                        if (isMap(arr[m])) {
+                            resolveNode(arr[m], scope);
+                        }
+                    }
+                    m = m + 1;
+                }
+            }
+        }
+        j = j + 1;
+    }
+    // Special: MapLiteral "pairs" is an array of {"key":Node,"value":Node}.
+    let pairs = node["pairs"];
+    if (pairs != null) {
+        if (isArray(pairs)) {
+            let p = 0;
+            while (p < len(pairs)) {
+                let pair = pairs[p];
+                if (pair != null) {
+                    if (isMap(pair)) {
+                        let pk = pair["key"];
+                        if (pk != null) { if (isMap(pk)) { resolveNode(pk, scope); } }
+                        let pv = pair["value"];
+                        if (pv != null) { if (isMap(pv)) { resolveNode(pv, scope); } }
+                    }
+                }
+                p = p + 1;
+            }
+        }
+    }
+    return null;
+}
+
+def resolveScopes(ast) {
+    if (ast == null) { return null; }
+    // If the AST root is a Program, treat it as the root scope directly so
+    // top-level `let`/`def` end up in the scope whose parent is null, which is
+    // how lookup classifies them as "global".
+    if (ast["type"] == "Program") {
+        let rootScope = makeResolverScope(null, true);
+        ast["resolvedScope"] = rootScope;
+        let locals = [];
+        ast["resolvedLocals"] = locals;
+
+        // Static resolution requires that every identifier (even ones that
+        // textually precede their top-level declaration) can resolve to a
+        // root-level name. We therefore pre-declare (hoist):
+        //   - built-in library functions (origin="lib")
+        //   - top-level `def` (origin="def")
+        //   - top-level `let` (origin="let")
+        // This is safe for correctness because the root scope has no
+        // enclosing scope, so there is nothing for a later `let` to shadow.
+        let libNames = libraryFunctionNames();
+        let libGlobals = [];
+        let li = 0;
+        while (li < len(libNames)) {
+            resolverScopeDeclare(rootScope, libNames[li], "lib");
+            push(libGlobals, libNames[li]);
+            li = li + 1;
+        }
+        ast["resolvedLibraryGlobals"] = libGlobals;
+
+        let rootGlobals = [];
+        let stmts = ast["statements"];
+        if (stmts == null) {
+            ast["resolvedRootGlobals"] = rootGlobals;
+            return rootScope;
+        }
+        let n = len(stmts);
+
+        let h = 0;
+        while (h < n) {
+            let stmt = stmts[h];
+            if (stmt != null) {
+                let st = stmt["type"];
+                if (st == "VariableDeclaration") {
+                    resolverScopeDeclare(rootScope, stmt["name"], "let");
+                    push(rootGlobals, stmt["name"]);
+                }
+                if (st == "FunctionDeclaration") {
+                    resolverScopeDeclare(rootScope, stmt["name"], "def");
+                    push(rootGlobals, stmt["name"]);
+                }
+            }
+            h = h + 1;
+        }
+        ast["resolvedRootGlobals"] = rootGlobals;
+
+        let i = 0;
+        while (i < n) {
+            let stmt = stmts[i];
+            if (stmt != null) {
+                resolveNode(stmt, rootScope);
+                let st = stmt["type"];
+                if (st == "VariableDeclaration") {
+                    push(locals, stmt["name"]);
+                }
+                if (st == "FunctionDeclaration") {
+                    push(locals, stmt["name"]);
+                }
+            }
+            i = i + 1;
+        }
+        return rootScope;
+    }
+    let rootScope = makeResolverScope(null, true);
+    resolveNode(ast, rootScope);
+    return rootScope;
+}
+
 def functionDeclarationToGo(self) {
     // Go: ctx.Create("factorial", NewFunctionCommand(func(ctx *Context, params *ArrayValue) (result Value) {
     //   ctx.Create("x", params.Get(IntValue{val: 0}))
@@ -1332,55 +1729,51 @@ def functionDeclarationToGo(self) {
 	// return result
 	//}))
     
-    puts('ctx.Create("' + self["name"] + '", NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+    // Top-level defs (C6) become package-level Go vars so references can be
+    // routed directly to the function value without going through ctx.Get.
+    // Non-root defs still go through ctx.Create as before.
+    // Only the enclosing scope being the program root qualifies. Nested defs
+    // that happen to share a name with a top-level def (and thus resolve to
+    // origin=def,kind=global) must still emit via ctx.Create, otherwise they
+    // overwrite the package-level ij_<name> of the outer function.
+    let atRoot = (self["resolvedAtRoot"] == true);
+    if (atRoot) {
+        puts(self["resolvedName"] + ' = NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+    } else {
+        puts('ctx.Create("' + self["name"] + '", NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+    }
     puts('result=NewNullValue()');
 
     let i = 0;
     while (i < len(self["parameters"])) {
         let param = self["parameters"][i];
+        let mangled = mangle(param);
 
-        puts('ctx.Create("' + param + '", params.Get(IntValue{val: ' + intString(i) + '}))');
+        puts('var ' + mangled + ' Value = params.Get(IntValue{val: ' + intString(i) + '})');
+        puts('_ = ' + mangled);
 
         i = i + 1;
     }
 
-    // Inline the function body statements directly - no extra NewContext needed
-    // because FunctionCommand.Execute already created a fresh context for us
-    // and parameters are already in it via ctx.Create above.
+    // Emit the body via blockStatementToGo so the body gets its own Go scope.
+    // This lets function-local `let` shadow parameters (e.g. `def f(i) { let i = ... }`),
+    // since the `var ij_i` inside the inner block is a distinct variable from the
+    // parameter binding emitted above.
     let body = self["body"];
-    let inlined = false;
     if (body != null) {
-        if (body["type"] == "BlockStatement") {
-            let stmts = body["statements"];
-            let n = len(stmts);
-            let k = 0;
-            while (k < n) {
-                let stmt = stmts[k];
-                if (k == n-1 && stmt["type"] != "ReturnStatement") {
-                    if (stmt["type"] == "AssignmentStatement" || stmt["type"] == "IndexAssignmentStatement" || stmt["type"] == "ExpressionStatement") {
-                        print('result=');
-                    }
-                }
-                if (stmt["toGo"] != null) {
-                    stmt["toGo"](stmt);
-                    puts("");
-                }
-                k = k + 1;
-            }
-            inlined = true;
-        }
-    }
-    if (!inlined) {
-        if (body != null) {
-            if (body["toGo"] != null) {
-                body["toGo"](body);
-            }
+        if (body["toGo"] != null) {
+            body["toGo"](body);
+            puts("");
         }
     }
 
-    puts("");
     puts('return result')
-    puts('}))');
+    if (atRoot) {
+        puts('})');
+        puts('ctx.Create("' + self["name"] + '", ' + self["resolvedName"] + ')');
+    } else {
+        puts('}))');
+    }
 }
 
 
@@ -1590,8 +1983,31 @@ def identifierToJson(self) {
 
 def identifierToGo(self) {
     // Go: hello vs. ctx.Get("hello")
-    
+
+    // Static resolution: params and function-local lets are emitted as Go
+    // vars (phases C3/C4); library functions and top-level lets/defs are
+    // emitted as package-level Go vars (phases C6/C7). Only truly
+    // unresolved globals fall back to ctx.Get.
+    let origin = self["resolvedOrigin"];
+    let kind = self["resolvedKind"];
+    if (origin == "param") {
+        print(self["resolvedName"]);
+        return null;
+    }
+    if (origin == "let") {
+        if (kind == "local" || kind == "captured") {
+            print(self["resolvedName"]);
+            return null;
+        }
+    }
+    if (kind == "global") {
+        if (origin == "lib" || origin == "def" || origin == "let") {
+            print(self["resolvedName"]);
+            return null;
+        }
+    }
     print('ctx.Get("' + self["name"] + '")');
+    return null;
 }
 
 
@@ -3951,6 +4367,20 @@ def makeProgram() {
     program["toJson"] = toJson;
 
     def toGo(self) {
+        // Populate the package-level Go vars that cache built-in library
+        // functions so static references (C6) see the right Value. Done
+        // once at program start, right after registerLibraryFunctions(ctx)
+        // from goLibPrefix ran.
+        let libs = self["resolvedLibraryGlobals"];
+        if (libs != null) {
+            let li = 0;
+            while (li < len(libs)) {
+                let lname = libs[li];
+                puts(mangle(lname) + ' = ctx.Get("' + lname + '")');
+                li = li + 1;
+            }
+        }
+
         let stmts = self["statements"];
         let n = len(stmts);
         let i = 0;
@@ -4018,10 +4448,26 @@ def variableDeclarationToJson(self) {
 }
 
 def variableDeclarationToGo(self) {
-    // GO: ctx.Create("x", IntValue{val: 3})
-    
-    print('ctx.Create("' + self["name"] + '",');
-    
+    // Function-local lets are emitted as Go vars so references can resolve
+    // statically (C4).
+    if (self["resolvedAtRoot"] == false) {
+        print('var ' + self["resolvedName"] + ' Value = ');
+        let init = self["initializer"];
+        if (init != null) {
+            if (init["toGo"] != null) {
+                init["toGo"](init);
+            }
+        } else {
+            print('NullVal');
+        }
+        puts('');
+        puts('_ = ' + self["resolvedName"]);
+        return null;
+    }
+
+    // Root-level `let` (C7): assign to the package-level Go var and keep
+    // the ctx.Create mirror for dynamic lookup fallback.
+    print(self["resolvedName"] + ' = ');
     let init = self["initializer"]
     if (init != null) {
         if (init["toGo"] != null) {
@@ -4031,8 +4477,9 @@ def variableDeclarationToGo(self) {
     else {
         print('NullVal');
     }
-
-    puts(')');
+    puts('');
+    puts('ctx.Create("' + self["name"] + '", ' + self["resolvedName"] + ')');
+    return null;
 }
 
 
@@ -6012,6 +6459,7 @@ def makeInterpreter() {
         if (self["ast"] == null) {
             return null;
         }
+        resolveScopes(self["ast"]);
         return self["ast"]["toGo"](self["ast"]);
     }
     interpreter["toGo"] = toGo;
@@ -6365,6 +6813,38 @@ if (transpileGo) {
     interpreter["toGo"](interpreter);
     if (transpileGoFull) {
         goLibSuffix();
+        // Emit package-level Value vars for every name we treat as a static
+        // global (C6/C7): built-in library functions and top-level let/def.
+        // Deduplicate because user code may shadow library names with its
+        // own top-level declarations.
+        let astRoot = interpreter["ast"];
+        if (astRoot != null) {
+            let emitted = {};
+            let libs = astRoot["resolvedLibraryGlobals"];
+            if (libs != null) {
+                let gi = 0;
+                while (gi < len(libs)) {
+                    let lname = libs[gi];
+                    if (emitted[lname] == null) {
+                        puts("var " + mangle(lname) + " Value");
+                        emitted[lname] = true;
+                    }
+                    gi = gi + 1;
+                }
+            }
+            let roots = astRoot["resolvedRootGlobals"];
+            if (roots != null) {
+                let gj = 0;
+                while (gj < len(roots)) {
+                    let rname = roots[gj];
+                    if (emitted[rname] == null) {
+                        puts("var " + mangle(rname) + " Value");
+                        emitted[rname] = true;
+                    }
+                    gj = gj + 1;
+                }
+            }
+        }
         puts("EOX");
         puts("go build app.go");
     }
