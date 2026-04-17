@@ -667,10 +667,7 @@ def ReturnStatement_toGo(self) {
 
       print('for ');
 
-      if (self["condition"]["toGo"] != null) {
-        self["condition"]["toGo"](self["condition"])
-      }
-      print('.IsTruthy()');
+      conditionToGoBool(self["condition"]);
 
       print(' ');
 
@@ -1410,6 +1407,17 @@ def mangle(name) {
 
 let resolverScopeIdCounter = 0;
 
+// D2: queue of static top-level FunctionDeclaration AST nodes whose fixed-arity
+// Go `func ij_<name>_impl(...)` must be emitted AFTER main() closes (since Go
+// doesn't allow nested functions). Populated by functionDeclarationToGo during
+// the main() emission pass and drained by transpileGo after goLibSuffix.
+let transpilerImplQueue = [];
+
+// D2: map from IJ top-level def name -> parameter arity, for call sites to
+// decide whether they can emit a direct ij_<name>_impl(ctx, args...) call.
+// Populated lazily by functionDeclarationToGo.
+let transpilerStaticImpls = {};
+
 def makeResolverScope(parent, isFunctionScope) {
     let s = {};
     s["parent"] = parent;
@@ -1550,7 +1558,117 @@ def resolveFunctionDeclaration(node, parentScope) {
     }
 
     resolveNode(node["body"], fnScope);
+
+    // D1: decide whether this function's body can skip the per-call
+    // NewContext() that FunctionCommand.Execute normally allocates. The
+    // predicate is conservative: the body must NOT emit any ctx.Get /
+    // ctx.Update / ctx.Create so that reusing the caller's ctx is
+    // observationally identical. See analyzeIsStatic below.
+    node["resolvedIsStatic"] = analyzeIsStatic(node["body"]);
+
     return null;
+}
+
+// Walk a function body and return true iff the emitted Go for every
+// descendant matches identifierToGo / assignmentStatementToGo's static
+// code path (no ctx.Get, no ctx.Update, no ctx.Create). Nested
+// FunctionDeclaration short-circuits to false because a nested def emits
+// ctx.Create("name", ...) into the block-level Go ctx. Only descends into
+// the current function's body; nested functions compute their own
+// resolvedIsStatic independently.
+def analyzeIsStatic(node) {
+    if (node == null) { return true; }
+    if (!isMap(node)) { return true; }
+    let t = node["type"];
+    if (t == null) { return true; }
+
+    if (t == "FunctionDeclaration") { return false; }
+
+    if (t == "Identifier") {
+        let origin = node["resolvedOrigin"];
+        let kind = node["resolvedKind"];
+        let usesGoVar = false;
+        if (origin == "param") { usesGoVar = true; }
+        if (origin == "let") {
+            if (kind == "local" || kind == "captured") { usesGoVar = true; }
+        }
+        if (kind == "global") {
+            if (origin == "lib" || origin == "def" || origin == "let") { usesGoVar = true; }
+        }
+        if (!usesGoVar) { return false; }
+    }
+
+    if (t == "AssignmentStatement") {
+        let origin = node["resolvedOrigin"];
+        let kind = node["resolvedKind"];
+        let useGoVar = false;
+        let isGlobal = false;
+        if (origin == "param") { useGoVar = true; }
+        if (origin == "let") {
+            if (kind == "local" || kind == "captured") { useGoVar = true; }
+        }
+        if (kind == "global") {
+            if (origin == "lib" || origin == "def" || origin == "let") {
+                useGoVar = true;
+                isGlobal = true;
+            }
+        }
+        if (!useGoVar) { return false; }
+        if (isGlobal) { return false; }
+    }
+
+    let scalarKeys = ["condition","consequence","alternative","body","left","right","collection","index","value","callee","expression","initializer"];
+    let i = 0;
+    while (i < len(scalarKeys)) {
+        let k = scalarKeys[i];
+        let child = node[k];
+        if (child != null) {
+            if (isMap(child)) {
+                if (!analyzeIsStatic(child)) { return false; }
+            }
+        }
+        i = i + 1;
+    }
+    let arrKeys = ["statements","elements","arguments"];
+    let j = 0;
+    while (j < len(arrKeys)) {
+        let k = arrKeys[j];
+        let arr = node[k];
+        if (arr != null) {
+            if (isArray(arr)) {
+                let m = 0;
+                while (m < len(arr)) {
+                    if (arr[m] != null) {
+                        if (isMap(arr[m])) {
+                            if (!analyzeIsStatic(arr[m])) { return false; }
+                        }
+                    }
+                    m = m + 1;
+                }
+            }
+        }
+        j = j + 1;
+    }
+    let pairs = node["pairs"];
+    if (pairs != null) {
+        if (isArray(pairs)) {
+            let p = 0;
+            while (p < len(pairs)) {
+                let pair = pairs[p];
+                if (pair != null) {
+                    if (isMap(pair)) {
+                        let pk = pair["key"];
+                        if (pk != null) { if (isMap(pk)) { if (!analyzeIsStatic(pk)) { return false; } } }
+                        let pv = pair["value"];
+                        if (pv != null) { if (isMap(pv)) { if (!analyzeIsStatic(pv)) { return false; } } }
+                    }
+                }
+                p = p + 1;
+            }
+        }
+    }
+
+    return true;
 }
 
 def resolveVariableDeclaration(node, scope) {
@@ -1737,10 +1855,53 @@ def functionDeclarationToGo(self) {
     // origin=def,kind=global) must still emit via ctx.Create, otherwise they
     // overwrite the package-level ij_<name> of the outer function.
     let atRoot = (self["resolvedAtRoot"] == true);
+    // D1: use NewStaticFunctionCommand when the body has been analyzed as
+    // ctx-free, letting Execute reuse the caller's ctx instead of allocating
+    // a fresh Context per invocation.
+    let ctor = "NewFunctionCommand";
+    if (self["resolvedIsStatic"] == true) { ctor = "NewStaticFunctionCommand"; }
+
+    // D2: for top-level static defs, emit a fixed-arity package-level Go
+    // function `ij_<name>_impl(ctx, ij_arg0, ...)` that callers can invoke
+    // directly, skipping both the *ArrayValue allocation and the Execute
+    // interface-dispatch layer. Emit only the wrapper+ctx.Create inline; the
+    // impl goes on transpilerImplQueue and is emitted after goLibSuffix.
+    // Only the LAST occurrence per name is eligible because the impl symbol
+    // is package-level and Go forbids redeclaration. Earlier occurrences
+    // (needed for patterns like `let oldX = X; def X(...) {...}`) fall back
+    // to the inline-wrapper emission below.
+    let useImpl = false;
     if (atRoot) {
-        puts(self["resolvedName"] + ' = NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+        if (self["resolvedIsStatic"] == true) {
+            if (self["resolvedIsLastAtRoot"] == true) { useImpl = true; }
+        }
+    }
+
+    if (useImpl) {
+        let pn = len(self["parameters"]);
+        transpilerStaticImpls[self["name"]] = pn;
+        push(transpilerImplQueue, self);
+
+        puts(self["resolvedName"] + ' = NewStaticFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) Value {');
+        let ci = 0;
+        let forwardArgs = "";
+        while (ci < pn) {
+            if (ci > 0) { forwardArgs = forwardArgs + ","; }
+            forwardArgs = forwardArgs + "params.Get(IntValue{val: " + intString(ci) + "})";
+            ci = ci + 1;
+        }
+        let sep = "";
+        if (pn > 0) { sep = ","; }
+        puts('return ' + self["resolvedName"] + '_impl(ctx' + sep + forwardArgs + ')');
+        puts('})');
+        puts('ctx.Create("' + self["name"] + '", ' + self["resolvedName"] + ')');
+        return null;
+    }
+
+    if (atRoot) {
+        puts(self["resolvedName"] + ' = ' + ctor + '(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
     } else {
-        puts('ctx.Create("' + self["name"] + '", NewFunctionCommand(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
+        puts('ctx.Create("' + self["name"] + '", ' + ctor + '(ctx,func(ctx *Context, params *ArrayValue) (result Value) {');
     }
     puts('result=NewNullValue()');
 
@@ -1773,6 +1934,43 @@ def functionDeclarationToGo(self) {
         puts('ctx.Create("' + self["name"] + '", ' + self["resolvedName"] + ')');
     } else {
         puts('}))');
+    }
+}
+
+// D2: drain transpilerImplQueue, emitting one package-level Go function per
+// queued static top-level def. Called after goLibSuffix so the impls live at
+// package scope.
+def emitQueuedImpls() {
+    let n = len(transpilerImplQueue);
+    let i = 0;
+    while (i < n) {
+        let self = transpilerImplQueue[i];
+        let pn = len(self["parameters"]);
+        let sig = 'func ' + self["resolvedName"] + '_impl(ctx *Context';
+        let p = 0;
+        while (p < pn) {
+            sig = sig + ', ' + mangle(self["parameters"][p]) + ' Value';
+            p = p + 1;
+        }
+        sig = sig + ') (result Value) {';
+        puts(sig);
+        puts('_ = ctx');
+        let q = 0;
+        while (q < pn) {
+            puts('_ = ' + mangle(self["parameters"][q]));
+            q = q + 1;
+        }
+        puts('result=NewNullValue()');
+        let body = self["body"];
+        if (body != null) {
+            if (body["toGo"] != null) {
+                body["toGo"](body);
+                puts("");
+            }
+        }
+        puts('return result');
+        puts('}');
+        i = i + 1;
     }
 }
 
@@ -3089,20 +3287,43 @@ def CallExpression_toGo(self) {
     //Go: ctx.Get("puts").Execute(ctx, NewArrayValue(StringValue{val: "Computing factorial for:" + val.String()}))
     
     let callee = self["callee"];
+    let argsLen = len(self["arguments"]);
 
-    //if (callee["name"] == null || callee["name"] == "null") { //GODEBUG FIXME
-    //    print(' /* CallExpression_toGo: calee name null (!): ')
-    //    print(self["toJson"](self));
-    //    print(" , ")
-    //    callee["toGo"](callee); // ctx.Get("element").Get(StringValue{val: "evaluate"})
-    //    print(' */ ')
-    //}
-    // OLD: print('ctx.Get("' + callee["name"] /* broken abstraction */ + '").Execute(ctx, NewArrayValue('); //GOFIX?
-    
+    // D2: when the callee is an Identifier that resolves to a top-level
+    // static `def` whose impl has matching arity, emit a direct fixed-arity
+    // Go call. Skips both the *ArrayValue allocation and the interface
+    // dispatch through FunctionCommand.Execute.
+    if (callee != null) {
+        if (callee["type"] == "Identifier") {
+            let origin = callee["resolvedOrigin"];
+            let kind = callee["resolvedKind"];
+            if (origin == "def") {
+                if (kind == "global") {
+                    let arity = transpilerStaticImpls[callee["name"]];
+                    if (arity != null) {
+                        if (arity == argsLen) {
+                            print(mangle(callee["name"]) + '_impl(ctx');
+                            let di = 0;
+                            while (di < argsLen) {
+                                print(',');
+                                let argNode = self["arguments"][di];
+                                if (argNode["toGo"] != null) {
+                                    argNode["toGo"](argNode);
+                                }
+                                di = di + 1;
+                            }
+                            print(')');
+                            return null;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     callee["toGo"](callee);
     print('.Execute(ctx, NewArrayValue('); 
 
-    let argsLen = len(self["arguments"]);
     let i = 0;
     while (i < argsLen) {
         if (i > 0) {
@@ -3240,6 +3461,52 @@ def ifStatementToJson(self) {
     return result;
 }
 
+// D3: emit a Go boolean expression for a condition slot. When the condition
+// is an InfixExpression with a comparison operator or a PrefixExpression `!`,
+// use a direct bool-returning helper to skip the intermediate BoolValue.
+// Fall back to `<value>.IsTruthy()` for anything else.
+def conditionToGoBool(condNode) {
+    if (condNode != null) {
+        if (condNode["type"] == "InfixExpression") {
+            let op = condNode["operator"];
+            let helper = null;
+            if (op == "==") { helper = "EqualsBool"; }
+            if (op == "!=") { helper = "NotEqualsBool"; }
+            if (op == "<")  { helper = "LessThanBool"; }
+            if (op == "<=") { helper = "LessThanEqualBool"; }
+            if (op == ">")  { helper = "BiggerThanBool"; }
+            if (op == ">=") { helper = "BiggerThanEqualBool"; }
+            if (helper != null) {
+                print(helper + '(');
+                if (condNode["left"]["toGo"] != null) {
+                    condNode["left"]["toGo"](condNode["left"]);
+                }
+                print(',');
+                if (condNode["right"]["toGo"] != null) {
+                    condNode["right"]["toGo"](condNode["right"]);
+                }
+                print(')');
+                return null;
+            }
+        }
+        if (condNode["type"] == "PrefixExpression") {
+            if (condNode["operator"] == "!") {
+                print('(!');
+                if (condNode["right"]["toGo"] != null) {
+                    condNode["right"]["toGo"](condNode["right"]);
+                }
+                print('.IsTruthy())');
+                return null;
+            }
+        }
+    }
+    if (condNode["toGo"] != null) {
+        condNode["toGo"](condNode);
+    }
+    print('.IsTruthy()');
+    return null;
+}
+
 def ifStatementToGo(self) {
     // Go: if true {
 	//   return IntValue{val: 100}
@@ -3249,10 +3516,7 @@ def ifStatementToGo(self) {
 
     print('if ');
 
-    if (self["condition"]["toGo"] != null) {
-        self["condition"]["toGo"](self["condition"]);
-    }
-    print('.IsTruthy()');
+    conditionToGoBool(self["condition"]);
 
     print(' ');
 
@@ -4383,12 +4647,73 @@ def makeProgram() {
 
         let stmts = self["statements"];
         let n = len(stmts);
+
+        // D2: find the LAST top-level FunctionDeclaration index for each
+        // name. Duplicate top-level defs are legal in IJ (e.g.
+        // getTokenLiteral is declared twice in interpreter.s, and eval.s
+        // intentionally shadows library initializers). Only the LAST
+        // occurrence per name can legally use the shared ij_<name>_impl
+        // Go symbol; earlier occurrences are tagged so they fall back to
+        // the inline-wrapper emission path. Crucially, earlier wrappers
+        // must still be emitted so patterns like
+        //   let oldX = X; def X(...) { oldX(...); ... }
+        // capture the original function value.
+        let lastDefIndex = {};
+        let pi = 0;
+        while (pi < n) {
+            let pstmt = stmts[pi];
+            if (pstmt != null) {
+                if (pstmt["type"] == "FunctionDeclaration") {
+                    if (pstmt["resolvedAtRoot"] == true) {
+                        lastDefIndex[pstmt["name"]] = pi;
+                    }
+                }
+            }
+            pi = pi + 1;
+        }
+
+        // Tag each FunctionDeclaration with `resolvedIsLastAtRoot` so the
+        // emitter can decide whether the D2 impl path is legal for it.
+        let pk = 0;
+        while (pk < n) {
+            let pstmt = stmts[pk];
+            if (pstmt != null) {
+                if (pstmt["type"] == "FunctionDeclaration") {
+                    if (pstmt["resolvedAtRoot"] == true) {
+                        pstmt["resolvedIsLastAtRoot"] = (lastDefIndex[pstmt["name"]] == pk);
+                    }
+                }
+            }
+            pk = pk + 1;
+        }
+
+        // D2: pre-populate transpilerStaticImpls with the LAST static def's
+        // arity per name so call sites emitted before that def (including
+        // those inside deferred bodies) take the direct-call path. Only
+        // the LAST occurrence qualifies because only it owns ij_<name>_impl.
+        let pj = 0;
+        while (pj < n) {
+            let pstmt = stmts[pj];
+            if (pstmt != null) {
+                if (pstmt["type"] == "FunctionDeclaration") {
+                    if (pstmt["resolvedAtRoot"] == true) {
+                        if (pstmt["resolvedIsStatic"] == true) {
+                            if (pstmt["resolvedIsLastAtRoot"] == true) {
+                                transpilerStaticImpls[pstmt["name"]] = len(pstmt["parameters"]);
+                            }
+                        }
+                    }
+                }
+            }
+            pj = pj + 1;
+        }
+
         let i = 0;
         while (i < n) {
             let stmt = stmts[i];
             if (stmt["toGo"] != null) {
                 stmt["toGo"](stmt);
-                puts(""); 
+                puts("");
             }
             i = i + 1;
         }
@@ -4931,9 +5256,16 @@ puts("}");
 puts("type FunctionCommand struct {");
 puts("definitionCtx *Context");
 puts("executeFunc   func(*Context, *ArrayValue) Value");
+puts("skipCtx       bool");
 puts("}");
-puts("func (c *FunctionCommand) Execute(obsoleteCtx *Context, params *ArrayValue) Value {");
+puts("func (c *FunctionCommand) Execute(callerCtx *Context, params *ArrayValue) Value {");
 // counter disabled: puts("ijCountFuncExec++");
+puts("if c.skipCtx {");
+// D1: the body has been statically analyzed to contain no ctx.Get /
+// ctx.Update / ctx.Create emissions. Reusing the caller's ctx is
+// observationally identical and saves one heap alloc per call.
+puts("return c.executeFunc(callerCtx, params)");
+puts("}");
 puts("return c.executeFunc(NewContext(c.definitionCtx), params)");
 puts("}");
 puts("func (c *FunctionCommand) Add(other Value) Value {");
@@ -5016,6 +5348,9 @@ puts("return BoolValue{val: !c.IsTruthy()}");
 puts("}");
 puts("func NewFunctionCommand(definitionCtx *Context, fn func(*Context, *ArrayValue) Value) Command {");
 puts("return &FunctionCommand{definitionCtx: definitionCtx, executeFunc: fn}");
+puts("}");
+puts("func NewStaticFunctionCommand(definitionCtx *Context, fn func(*Context, *ArrayValue) Value) Command {");
+puts("return &FunctionCommand{definitionCtx: definitionCtx, executeFunc: fn, skipCtx: true}");
 puts("}");
 puts("type Value interface {");
 puts("Add(other Value) Value");
@@ -6166,6 +6501,36 @@ puts("}");
 puts("func FalseValue() BoolValue {");
 puts("return BoolValue{val: false}");
 puts("}");
+// D3: bool-returning helpers for condition-slot comparisons. These skip the
+// intermediate BoolValue (which, as Go interface, typically escapes to heap)
+// and open-code the hot IntValue / StringValue / DoubleValue type-pair path
+// so the Go compiler has a chance to inline the common loop-counter case.
+puts("func EqualsBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val == bi.val } }");
+puts("if as, ok := a.(StringValue); ok { if bs, ok := b.(StringValue); ok { return as.val == bs.val } }");
+puts("return a.Equals(b).(BoolValue).val");
+puts("}");
+puts("func NotEqualsBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val != bi.val } }");
+puts("if as, ok := a.(StringValue); ok { if bs, ok := b.(StringValue); ok { return as.val != bs.val } }");
+puts("return !a.Equals(b).(BoolValue).val");
+puts("}");
+puts("func LessThanBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val < bi.val } }");
+puts("return a.LessThan(b).(BoolValue).val");
+puts("}");
+puts("func LessThanEqualBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val <= bi.val } }");
+puts("return a.LessThanEqual(b).(BoolValue).val");
+puts("}");
+puts("func BiggerThanBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val > bi.val } }");
+puts("return a.BiggerThan(b).(BoolValue).val");
+puts("}");
+puts("func BiggerThanEqualBool(a, b Value) bool {");
+puts("if ai, ok := a.(IntValue); ok { if bi, ok := b.(IntValue); ok { return ai.val >= bi.val } }");
+puts("return a.BiggerThanEqual(b).(BoolValue).val");
+puts("}");
 puts("type NullValue struct{}");
 puts("func (n NullValue) Add(other Value) Value {");
 puts("return NewInvalidValue(" + chr(34) + "addition not defined for NullValue" + chr(34) + ")");
@@ -6813,6 +7178,9 @@ if (transpileGo) {
     interpreter["toGo"](interpreter);
     if (transpileGoFull) {
         goLibSuffix();
+        // D2: drain the queue of static top-level defs, emitting each as a
+        // package-level ij_<name>_impl(...) fixed-arity Go function.
+        emitQueuedImpls();
         // Emit package-level Value vars for every name we treat as a static
         // global (C6/C7): built-in library functions and top-level let/def.
         // Deduplicate because user code may shadow library names with its
