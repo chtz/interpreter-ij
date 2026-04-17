@@ -1163,14 +1163,29 @@ def blockStatementToJson(self) {
 }
 
 def blockStatementToGo(self) {
-    puts("{");
-    puts("ctx := NewContext(ctx)");
-    puts('if ctx == nil {'); //dirty hack to avoid declared and not used: ctx error
-    puts('    fmt.Println("NOOP");');
-    puts('}');
-
     let stmts = self["statements"];
     let n = len(stmts);
+
+    // Skip NewContext when this block has no let/def declarations; no new scope needed.
+    let hasLocal = false;
+    let j = 0;
+    while (j < n) {
+        let t = stmts[j]["type"];
+        if (t == "VariableDeclaration") { hasLocal = true; }
+        if (t == "FunctionDeclaration") { hasLocal = true; }
+        j = j + 1;
+    }
+
+    puts("{");
+    if (hasLocal) {
+        puts("ctx := NewContext(ctx)");
+        puts('if ctx == nil {'); //dirty hack to avoid declared and not used: ctx error
+        puts('    fmt.Println("NOOP");');
+        puts('}');
+    } else {
+        puts("_ = ctx");
+    }
+
     let i = 0;
     while (i < n) {
         let stmt = stmts[i];
@@ -1329,8 +1344,38 @@ def functionDeclarationToGo(self) {
         i = i + 1;
     }
 
-    if (self["body"]["toGo"] != null) {
-        self["body"]["toGo"](self["body"]);
+    // Inline the function body statements directly - no extra NewContext needed
+    // because FunctionCommand.Execute already created a fresh context for us
+    // and parameters are already in it via ctx.Create above.
+    let body = self["body"];
+    let inlined = false;
+    if (body != null) {
+        if (body["type"] == "BlockStatement") {
+            let stmts = body["statements"];
+            let n = len(stmts);
+            let k = 0;
+            while (k < n) {
+                let stmt = stmts[k];
+                if (k == n-1 && stmt["type"] != "ReturnStatement") {
+                    if (stmt["type"] == "AssignmentStatement" || stmt["type"] == "IndexAssignmentStatement" || stmt["type"] == "ExpressionStatement") {
+                        print('result=');
+                    }
+                }
+                if (stmt["toGo"] != null) {
+                    stmt["toGo"](stmt);
+                    puts("");
+                }
+                k = k + 1;
+            }
+            inlined = true;
+        }
+    }
+    if (!inlined) {
+        if (body != null) {
+            if (body["toGo"] != null) {
+                body["toGo"](body);
+            }
+        }
     }
 
     puts("");
@@ -4003,6 +4048,7 @@ puts("" + chr(34) + "fmt" + chr(34) + "");
 puts("" + chr(34) + "io" + chr(34) + "");
 puts("" + chr(34) + "os" + chr(34) + "");
 puts("" + chr(34) + "regexp" + chr(34) + "");
+puts("" + chr(34) + "runtime/pprof" + chr(34) + "");
 puts("" + chr(34) + "strconv" + chr(34) + "");
 puts("" + chr(34) + "strings" + chr(34) + "");
 puts(")");
@@ -4328,50 +4374,109 @@ puts("}");
 puts("return NewArrayValue(values...)");
 puts("}))");
 puts("}");
+puts("var ijCountNewContext uint64");
+puts("var ijCountCreate uint64");
+puts("var ijCountGet uint64");
+puts("var ijCountMapGet uint64");
+puts("var ijCountMapPut uint64");
+puts("var ijCountFuncExec uint64");
+puts("var ijCountNewMap uint64");
+puts("var ijCountNewArr uint64");
+puts("var ijCountUpdate uint64");
+puts("var ijCountCtxPromote uint64");
 puts("type Context struct {");
 puts("parent    *Context");
 puts("variables map[string]Value");
+puts("inlineLen int");
+puts("inlineKeys [6]string");
+puts("inlineVals [6]Value");
 puts("}");
+puts("const ctxInlineCap = 6");
 puts("func NewContext(parent *Context) *Context {");
-puts("return &Context{");
-puts("parent:    parent,");
-puts("variables: make(map[string]Value),");
+// counter disabled: puts("ijCountNewContext++");
+puts("return &Context{parent: parent}");
 puts("}");
+puts("func (c *Context) promote() {");
+// counter disabled: puts("ijCountCtxPromote++");
+puts("c.variables = make(map[string]Value, ctxInlineCap*2)");
+puts("for i := 0; i < c.inlineLen; i++ {");
+puts("c.variables[c.inlineKeys[i]] = c.inlineVals[i]");
+puts("}");
+puts("c.inlineLen = 0");
 puts("}");
 puts("func (c *Context) Get(name string) Value {");
-puts("if value, exists := c.variables[name]; exists {");
-puts("return value");
+// counter disabled: puts("ijCountGet++");
+puts("for ctx := c; ctx != nil; ctx = ctx.parent {");
+puts("if ctx.variables != nil {");
+puts("if v, ok := ctx.variables[name]; ok {");
+puts("return v");
 puts("}");
-puts("if c.parent != nil {");
-puts("return c.parent.Get(name)");
+puts("} else {");
+puts("for i := 0; i < ctx.inlineLen; i++ {");
+puts("if ctx.inlineKeys[i] == name {");
+puts("return ctx.inlineVals[i]");
+puts("}");
+puts("}");
+puts("}");
 puts("}");
 puts("return NewInvalidValue(" + chr(34) + "variable not found: " + chr(34) + " + name)");
 puts("}");
 puts("func (c *Context) Exists(name string) bool {");
-puts("if _, exists := c.variables[name]; exists {");
+puts("for ctx := c; ctx != nil; ctx = ctx.parent {");
+puts("if ctx.variables != nil {");
+puts("if _, ok := ctx.variables[name]; ok {");
 puts("return true");
 puts("}");
-puts("if c.parent != nil {");
-puts("return c.parent.Exists(name)");
+puts("} else {");
+puts("for i := 0; i < ctx.inlineLen; i++ {");
+puts("if ctx.inlineKeys[i] == name {");
+puts("return true");
+puts("}");
+puts("}");
+puts("}");
 puts("}");
 puts("return false");
 puts("}");
 puts("func (c *Context) Create(name string, value Value) Value {");
+// counter disabled: puts("ijCountCreate++");
+puts("if c.variables != nil {");
+puts("c.variables[name] = value");
+puts("return value");
+puts("}");
+puts("for i := 0; i < c.inlineLen; i++ {");
+puts("if c.inlineKeys[i] == name {");
+puts("c.inlineVals[i] = value");
+puts("return value");
+puts("}");
+puts("}");
+puts("if c.inlineLen < ctxInlineCap {");
+puts("c.inlineKeys[c.inlineLen] = name");
+puts("c.inlineVals[c.inlineLen] = value");
+puts("c.inlineLen++");
+puts("return value");
+puts("}");
+puts("c.promote()");
 puts("c.variables[name] = value");
 puts("return value");
 puts("}");
 puts("func (c *Context) Update(name string, value Value) Value {");
-puts("if _, exists := c.variables[name]; exists {");
-puts("c.variables[name] = value");
+// counter disabled: puts("ijCountUpdate++");
+puts("for ctx := c; ctx != nil; ctx = ctx.parent {");
+puts("if ctx.variables != nil {");
+puts("if _, ok := ctx.variables[name]; ok {");
+puts("ctx.variables[name] = value");
 puts("return value");
 puts("}");
-puts("if c.parent != nil {");
-puts("if c.parent.Exists(name) {");
-puts("return c.parent.Update(name, value)");
-puts("}");
-puts("}");
-puts("c.variables[name] = value");
+puts("} else {");
+puts("for i := 0; i < ctx.inlineLen; i++ {");
+puts("if ctx.inlineKeys[i] == name {");
+puts("ctx.inlineVals[i] = value");
 puts("return value");
+puts("}");
+puts("}");
+puts("}");
+puts("}");
+puts("return c.Create(name, value)");
 puts("}");
 puts("type Command interface {");
 puts("Value");
@@ -4381,6 +4486,7 @@ puts("definitionCtx *Context");
 puts("executeFunc   func(*Context, *ArrayValue) Value");
 puts("}");
 puts("func (c *FunctionCommand) Execute(obsoleteCtx *Context, params *ArrayValue) Value {");
+// counter disabled: puts("ijCountFuncExec++");
 puts("return c.executeFunc(NewContext(c.definitionCtx), params)");
 puts("}");
 puts("func (c *FunctionCommand) Add(other Value) Value {");
@@ -5193,12 +5299,11 @@ puts("pairs    []KeyValuePair");
 puts("keyIndex map[string]int");
 puts("}");
 puts("func (m *MapValue) findPair(key Value) (int, bool) {");
-puts("keyStr := key.ValueString()");
-puts("if m.keyIndex == nil {");
-puts("m.keyIndex = make(map[string]int)");
-puts("for i, pair := range m.pairs {");
-puts("m.keyIndex[pair.Key.ValueString()] = i");
-puts("}");
+puts("var keyStr string");
+puts("if sv, ok := key.(StringValue); ok {");
+puts("keyStr = sv.val");
+puts("} else {");
+puts("keyStr = key.ValueString()");
 puts("}");
 puts("idx, found := m.keyIndex[keyStr]");
 puts("return idx, found");
@@ -5293,6 +5398,7 @@ puts("func (m *MapValue) IntValue() int {");
 puts("return 0");
 puts("}");
 puts("func (m *MapValue) Get(index Value) Value {");
+// counter disabled: puts("ijCountMapGet++");
 puts("if idx, found := m.findPair(index); found {");
 puts("return m.pairs[idx].Value");
 puts("}");
@@ -5337,16 +5443,16 @@ puts("func (m *MapValue) IsTruthy() bool {");
 puts("return true");
 puts("}");
 puts("func (m *MapValue) Put(index Value, value Value) Value {");
-puts("keyStr := index.ValueString()");
-puts("if idx, found := m.findPair(index); found {");
+// counter disabled: puts("ijCountMapPut++");
+puts("var keyStr string");
+puts("if sv, ok := index.(StringValue); ok {");
+puts("keyStr = sv.val");
+puts("} else {");
+puts("keyStr = index.ValueString()");
+puts("}");
+puts("if idx, found := m.keyIndex[keyStr]; found {");
 puts("m.pairs[idx].Value = value");
 puts("} else {");
-puts("if m.keyIndex == nil {");
-puts("m.keyIndex = make(map[string]int)");
-puts("for i, pair := range m.pairs {");
-puts("m.keyIndex[pair.Key.ValueString()] = i");
-puts("}");
-puts("}");
 puts("newIdx := len(m.pairs)");
 puts("m.pairs = append(m.pairs, KeyValuePair{");
 puts("Key:   index,");
@@ -5375,9 +5481,11 @@ puts("func (m *MapValue) Modulo(other Value) Value {");
 puts("return NewInvalidValue(" + chr(34) + "modulo not defined for MapValue" + chr(34) + ")");
 puts("}");
 puts("func NewArrayValue(elements ...Value) *ArrayValue {");
+// counter disabled: puts("ijCountNewArr++");
 puts("return &ArrayValue{values: elements}");
 puts("}");
 puts("func NewMapValue(pairs ...KeyValuePair) *MapValue {");
+// counter disabled: puts("ijCountNewMap++");
 puts("m := &MapValue{");
 puts("pairs:    pairs,");
 puts("keyIndex: make(map[string]int),");
@@ -5388,6 +5496,7 @@ puts("}");
 puts("return m");
 puts("}");
 puts("func NewEmptyMapValue() *MapValue {");
+// counter disabled: puts("ijCountNewMap++");
 puts("return &MapValue{");
 puts("pairs:    []KeyValuePair{},");
 puts("keyIndex: make(map[string]int),");
@@ -5717,8 +5826,22 @@ puts("func (n NullValue) Type() StringValue {");
 puts("return StringValue{val: " + chr(34) + "null" + chr(34) + "}");
 puts("}");
 puts("func main() {");
+puts("if pf := os.Getenv(" + chr(34) + "IJ_CPUPROFILE" + chr(34) + "); pf != " + chr(34) + chr(34) + " {");
+puts("f, err := os.Create(pf)");
+puts("if err == nil {");
+puts("if err := pprof.StartCPUProfile(f); err == nil {");
+puts("defer pprof.StopCPUProfile()");
+puts("defer f.Close()");
+puts("}");
+puts("}");
+puts("}");
 puts("ctx := NewContext(nil)");
 puts("registerLibraryFunctions(ctx)");
+puts("defer func() {");
+puts("if os.Getenv(" + chr(34) + "IJ_COUNTERS" + chr(34) + ") != " + chr(34) + chr(34) + " {");
+puts("fmt.Fprintf(os.Stderr, " + chr(34) + "[IJ counters] NewContext=%d Create=%d Get=%d Update=%d MapGet=%d MapPut=%d FuncExec=%d NewMap=%d NewArr=%d Promote=%d" + chr(92) + "n" + chr(34) + ", ijCountNewContext, ijCountCreate, ijCountGet, ijCountUpdate, ijCountMapGet, ijCountMapPut, ijCountFuncExec, ijCountNewMap, ijCountNewArr, ijCountCtxPromote)");
+puts("}");
+puts("}()");
 puts("var result Value = nil");
 puts("if result != nil {");
 puts("fmt.Println(" + chr(34) + "NO OP" + chr(34) + ")");
