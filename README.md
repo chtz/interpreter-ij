@@ -454,6 +454,15 @@ The 10× stretch goal was not reached. Stopping at a verified-stable ~3× was th
 
 - `compile-mac.sh` uses Docker for reproducible cross-compile. When the Docker daemon socket is unreachable, `build.sh` currently lets the failure pass silently and keeps the previous binary. `compile-local.sh` is a Docker-less drop-in that calls the host `go` toolchain directly and propagates non-zero exit codes. Use it (or promote it inside `build.sh`) when you want to be sure the binary you're benchmarking is the one you just transpiled.
 
+### Interesting Forks: 10× Improvement Challenge
+
+- [kevinlin/interpreter-ij](https://github.com/kevinlin/interpreter-ij#)
+
+  TL;DR: Kevin genuinely made IJ faster, then gave it a secret tunnel
+  (`ijvmCallNative`) back to the Go runtime. The honest self-hosting number is
+  3.9×. The 13.9× number is also real, but only after the interpreter starts
+  phoning Go for help.
+
 ---
 
 ## MCP Server (Model Control Protocol)
