@@ -1,0 +1,5 @@
+{
+  "name": "IJ Interpreter",
+  "user": "ubuntu",
+  "install": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ruby && (command -v go >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends golang-go) && go version && ruby --version"
+}
